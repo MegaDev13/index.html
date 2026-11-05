@@ -3,7 +3,12 @@ set -euo pipefail
 mkdir -p neon-os/verification
 python3 neon-os/backend/tests/emulator_fixture.py > neon-os/verification/backend-fixture.log 2>&1 &
 fixture_pid=$!
-trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+collect_diagnostics() {
+  adb logcat -d -s AndroidRuntime:E > neon-os/verification/crash-log.txt 2>&1 || true
+  adb shell dumpsys activity lastanr > neon-os/verification/emulator-lastanr-after.txt 2>&1 || true
+  kill "$fixture_pid" 2>/dev/null || true
+}
+trap collect_diagnostics EXIT
 sleep 1
 system_home="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -1)"
 adb shell dumpsys activity lastanr > neon-os/verification/emulator-lastanr-before.txt

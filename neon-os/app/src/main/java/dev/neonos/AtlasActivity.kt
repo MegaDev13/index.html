@@ -125,7 +125,7 @@ class AtlasActivity:Activity() {
             transcript.addView(card,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(8)})
         }
         val viewport=messageScroll
-        viewport.post{viewport.fullScroll(View.FOCUS_DOWN)}
+        viewport.post{if(viewport.isAttachedToWindow)viewport.scrollTo(0,viewport.getChildAt(0)?.height?:0)}
     }
     private fun record(source:String,value:String) {
         val entry=JSONObject().put("source",source).put("text",value.take(8000)).put("time",System.currentTimeMillis())
