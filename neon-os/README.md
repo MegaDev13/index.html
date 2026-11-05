@@ -32,6 +32,7 @@ Workflow: `.github/workflows/neon-android.yml` na raiz do repositório. PR roda 
 ## Documentação
 - [Instalação e reversão](docs/INSTALACAO.md)
 - [Limitações e fontes](docs/COMPATIBILIDADE.md)
-- Relatório de entrega e evidências: docs/RELATORIO.md (adicionado após os testes).
+- [Relatório de entrega e evidências](docs/RELATORIO.md)
+- [Instalação do ChatGPT e backend opcional](docs/ATLAS-CONFIGURACAO.md)
 
-Não declara compatibilidade física sem teste no aparelho. Nenhuma câmera, internet, serviço de acessibilidade, overlay de bloqueio ou serviço permanente.
+Não declara compatibilidade física sem teste no aparelho. Sem câmera, serviço de acessibilidade, overlay de bloqueio ou serviço permanente. A versão 0.2.0 acrescenta internet/estado de rede para o ATLAS integrado opcional e microfone por acionamento manual com autorização. O launcher e os comandos locais digitados continuam funcionando offline.

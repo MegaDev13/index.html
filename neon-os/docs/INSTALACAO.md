@@ -1,17 +1,58 @@
-# Instalação, teste e reversão
+# NEON OS 0.2.0 — instalação, configuração e reversão
 
-1. Instale somente o APK assinado NEON-OS-0.1.1.apk. A instalação pede autorização normal do Android para a origem do arquivo. Não desative proteções do sistema. APKs `unsigned` e `debug` do CI são para desenvolvimento; não substituem o APK de entrega.
-2. Abra NEON OS como aplicativo. Não é necessário torná-lo launcher padrão.
-3. Em CONFIG → Guia nativo, siga o modo recomendado: mantenha POCO Launcher; aplique wallpaper; adicione Relógio NEON em Widgets. Ajuste o bloqueio real e a digital pelas opções oficiais do HyperOS.
-4. Se quiser testar a Home completa, CONFIG → Testar como launcher padrão. O HyperOS pode exigir botões. O app não força gestos.
-5. STATUS → Iniciar medição local. Use o app, volte ao STATUS e exporte JSON. Frames são os da janela NEON, memória é do processo e CPU é percentual de um núcleo lógico. Não é uma medição de bateria nem de latência de autenticação.
-6. Para reverter: CONFIG → Restaurar POCO Launcher (ou Configurações → Aplicativos → Apps padrão → Tela inicial). Em Temas, restaure wallpaper/ícones/bloqueio. Remova o widget e desinstale NEON OS se desejar. Dados de outros apps e disposição do POCO Launcher não são migrados nem apagados.
+## Atualizar a versão anterior
 
-Apenas a permissão normal SET_WALLPAPER é declarada. Não há internet, câmera, coleta biométrica, serviço de acessibilidade, administrador de dispositivo ou serviço permanente. Widgets Android exigem a autorização normal de vinculação do sistema; alguns provedores têm restrições próprias.
+1. Baixe **NEON-OS-0.2.0.apk**, o release assinado da entrega. Os APKs unsigned/debug do Actions são artefatos de desenvolvimento.
+2. Instale por cima do NEON OS 0.1.1. O applicationId continua `dev.neonos.poco`, o versionCode sobe de 10001 para 10200 e o certificado é o mesmo. Não desinstale para atualizar: isso apagaria as preferências e o histórico local do NEON.
+3. Autorize apenas a instalação solicitada normalmente pelo Android. Mantenha as proteções do aparelho. Uma assinatura igual permite a atualização, mas a instalação sobre a versão anterior ainda precisa ser verificada no aparelho físico.
+4. Abra NEON OS. Em **CONFIG**, escolha Cyberpunk Neon, Dark Terminal ou Corporate Dystopia. A escolha é persistente e não altera a ordem dos favoritos ou os IDs de widgets.
 
-Compatibilidade mínima: Android 13 (API 33). A validação inicial cobre Android 15 em emulador. POCO X7 Pro/HyperOS, biometria, NFC, bancos, chamadas, 120 Hz e autonomia exigem testes físicos e não são declarados aprovados por estes testes.
+## Preservar os gestos do POCO
 
-## Atualizações e assinatura
-applicationId fixo: dev.neonos.poco. versionCode inicial: 10001; aumente sempre. Certificado esperado em signing-certificate.sha256.
-A chave privada permanente não entra no Git. O backup de assinatura deve ser preservado pelo proprietário. Para assinar versões futuras localmente, use o mesmo arquivo neon.jks e senha do backup com o apksigner do Android SDK.
-O workflow gera APK release sem assinatura para verificação. A entrega inicial é assinada com a chave privada preservada. A opção de release assinado do workflow exige os secrets NEON_KEYSTORE_B64 e NEON_STORE_PASSWORD; falha se ausentes e valida o certificado para impedir troca acidental de identidade. Não gera chave temporária para uma atualização. O acesso atual do conector não permite configurar esses secrets automaticamente.
+O modo recomendado continua sendo usar NEON como aplicativo complementar, mantendo **POCO Launcher** como tela inicial. Adicione os widgets **Relógio NEON** e **ATLAS** pelos controles de widgets do launcher original e aplique o wallpaper se desejar.
+
+A Home completa do NEON é opcional: **CONFIG → Testar como launcher padrão** abre a seleção do Android. O HyperOS pode limitar os gestos ao launcher original; o NEON não os força nem contorna essa restrição. Verifique a versão instalada em **Configurações → Sobre o telefone** antes de experimentar essa opção. A versão comercial do HyperOS não pode ser deduzida apenas da identificação da build Android.
+
+A tela de bloqueio, o reconhecimento facial, a digital, o PIN, as notificações e o AOD continuam no HyperOS. Use as opções oficiais de Temas/Personalização para relógio e efeitos biométricos. As cinco transições do NEON são decorativas e universais sobre sua própria Home; não identificam digital ou rosto.
+
+## ATLAS com ChatGPT oficial — padrão, sem chave de API
+
+1. Instale o aplicativo **ChatGPT**, publicado pela OpenAI, a partir da Play Store. O pacote procurado pelo NEON é `com.openai.chatgpt`.
+2. Faça login e use sua conta dentro do próprio aplicativo oficial.
+3. Toque no botão ATLAS da Home, dock ou widget. No modo padrão, ele abre o aplicativo oficial pelo mecanismo público de abertura do Android. Se não estiver instalado, o painel oferece orientação e o link da loja.
+4. Pressione prolongadamente ATLAS na Home/dock para abrir o painel NEON com comandos locais e configuração. No widget, use **PAINEL**. Toque em **CONFIGURAR ATLAS** na configuração para selecionar os modos.
+5. Quando disponível em sua versão do ChatGPT, ative **Configurações → Voz → Começar com voz**. Esse ajuste é realizado pelo usuário no aplicativo oficial; o NEON não consegue forçar esse modo ou controlar suas conversas.
+
+O painel integrado não acessa a sessão, o histórico ou a memória da sua conta ChatGPT. A assinatura ChatGPT e o uso da API são serviços separados.
+
+## ATLAS integrado — opcional
+
+Siga [ATLAS-CONFIGURACAO.md](ATLAS-CONFIGURACAO.md). É necessário hospedar o backend isolado em HTTPS, configurar uma chave de projeto OpenAI somente no servidor, definir modelo/preços e criar um usuário. No painel, informe a URL HTTPS, faça login e selecione **ATLAS INTEGRADO**.
+
+Sem backend/login, o painel explica que não está configurado. Sem internet, mostra a indisponibilidade da IA e mantém comandos locais. A integração real com a OpenAI não foi executada nesta entrega por ausência de chave e servidor de produção configurados.
+
+**FALAR** usa o reconhecimento de fala do Android por acionamento manual, após autorização de microfone. A transcrição fica disponível para revisão antes de enviar. Respostas faladas usam TTS Android opcional; dependem do mecanismo/voz pt-BR instalado. Não há escuta permanente, palavra de ativação, voz OpenAI Realtime ou streaming WebRTC nesta versão.
+
+Comandos disponíveis incluem abrir aplicativos/configurações/câmera/calendário, pesquisar aplicativos, trocar os três temas, consultar a bateria, abrir as opções de brilho e pesquisar no navegador. Ajustes de brilho e pesquisa externa pedem confirmação; ações propostas pelo modelo sempre pedem confirmação. O brilho é ajustado pelo usuário na tela original do Android.
+
+## Permissões e dados
+
+O APK declara `SET_WALLPAPER`, `INTERNET`, `ACCESS_NETWORK_STATE` e `RECORD_AUDIO`. Apenas o microfone depende de concessão em tempo de execução e só é solicitado ao tocar em FALAR. Não há permissão de câmera, contatos, localização, arquivos privados, notificações ou AccessibilityService. A vinculação de widgets e os papéis padrão dependem das telas oficiais do Android.
+
+Token e histórico local independente usam AES-GCM com chave no Android Keystore, em arquivo privado sem backup Android. A retenção pode ser desativada ou ajustada para 1, 7 ou 30 dias. Expurgo por idade ocorre ao ler/gravar, sem serviço em segundo plano. **CONFIGURAR → Apagar histórico** remove as conversas locais; sair remove o token e tenta revogar a sessão do servidor. Sem confirmação de rede, a sessão remota expira em até 24 horas.
+
+## Teste no aparelho e reversão
+
+Comece mantendo POCO Launcher. Verifique abertura de seus apps, notificações, chamadas, NFC, bancos e autenticação pelos fluxos normais antes de escolher outra Home. Esses itens, a autonomia e os 120 Hz não foram validados em um POCO físico.
+
+Em **STATUS → Iniciar medição local**, use o NEON, volte e exporte o diagnóstico. CPU/memória/frames pertencem apenas ao processo/janela do NEON; não medem bateria ou tempo de autenticação. A medição para quando a janela fica invisível.
+
+Para reverter, use **CONFIG → Restaurar POCO Launcher** ou **Configurações → Aplicativos → Apps padrão → Tela inicial**. Restaure wallpaper/tema pelas opções do HyperOS e remova os widgets, se desejar. Desinstalar NEON apaga somente seus dados locais; não migra nem altera os dados de outros aplicativos. A desinstalação não é necessária para trocar de tema ou retornar ao launcher original.
+
+## Assinatura e futuras compilações
+
+Certificado SHA-256 esperado:
+
+`973185c207025f9b01339ce1130c85bd1fa6a22d7f652c786ae84d690874774b`
+
+A chave privada permanente permanece no backup privado já entregue; não está no repositório nem neste pacote. O APK atual foi compilado no GitHub Actions e assinado localmente com essa chave preservada, com verificação do certificado. A assinatura automática do workflow exige os secrets `NEON_KEYSTORE_B64` e `NEON_STORE_PASSWORD`, ainda não configurados pelo proprietário. Ela falha se os secrets estiverem ausentes ou o certificado for diferente, evitando uma nova identidade incompatível.
