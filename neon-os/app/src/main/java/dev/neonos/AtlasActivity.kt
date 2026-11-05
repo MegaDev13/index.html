@@ -171,7 +171,7 @@ class AtlasActivity:Activity() {
     private fun perform(action:LocalAction,fromAi:Boolean) {
         if(!LocalTools.valid(action)){say("Ação fora da lista permitida.");return}
         val execute={executeAction(action)}
-        if(fromAi||action.sensitive)AlertDialog.Builder(this).setTitle("Autorizar ação local?").setMessage("${action.name}: ${action.value}\n${if(action.name=="brightness_settings")"Será aberta a configuração de tela; você ajusta o brilho no Android."else if(action.name=="web_search")"A consulta será enviada ao navegador externo."else "A ação ocorrerá neste aparelho."}").setPositiveButton("Autorizar"){_,_->execute()}.setNegativeButton("Cancelar"){_,_->say("Ação cancelada.")}.show()else execute()
+        if(fromAi||action.sensitive)AlertDialog.Builder(this).setTitle("Autorizar ação local?").setMessage("${LocalTools.description(action)}\n${if(action.name=="brightness_settings")"Será aberta a configuração de tela; você ajusta o brilho no Android."else if(action.name=="web_search")"A consulta será enviada ao navegador externo."else "A ação ocorrerá neste aparelho."}").setPositiveButton("Autorizar"){_,_->execute()}.setNegativeButton("Cancelar"){_,_->say("Ação cancelada.")}.show()else execute()
     }
     private fun executeAction(action:LocalAction) {
         when(action.name) {
@@ -220,7 +220,7 @@ class AtlasActivity:Activity() {
             3->AlertDialog.Builder(this).setMessage("Apagar o histórico local independente do ATLAS?").setPositiveButton("Apagar"){_,_->messages=JSONArray();secure.clearHistory();renderMessages()}.setNegativeButton("Cancelar",null).show()
             4->{prefs.edit().putBoolean("atlas_speak",!prefs.getBoolean("atlas_speak",false)).apply();refreshStatus()}
             5->{val role=getSystemService(RoleManager::class.java);try{if(role.isRoleAvailable(RoleManager.ROLE_ASSISTANT))startActivity(role.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT))else launch(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))}catch(_:Exception){say("O HyperOS não disponibilizou esse papel. Use o botão ou o widget ATLAS.")}}
-            6->{generation++;api.cancel();secure.setToken("");refreshStatus()}
+            6->{generation++;api.cancel();busy=false;orb.status("PRONTO");val token=secure.token();secure.setToken("");refreshStatus();if(token.isNotBlank())io.execute {try{api.request("/v1/logout",JSONObject(),token)}catch(_:Exception){main.post{if(active)status.text="Sessão removida do aparelho. Sem confirmação de revogação no servidor; expira em até 24 h."}}}}
         }}.show()
     }
     private fun backendLogin() {

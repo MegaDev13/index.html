@@ -32,6 +32,7 @@ class MainActivity: Activity() {
     private lateinit var access: AccessView;private lateinit var art: ArtView
     private lateinit var diagnostics: Diagnostics
     private var clock: TextView?=null;private var date: TextView?=null;private var battery: TextView?=null
+    private var atlasHomeButton:TextView?=null
     private var gridBody: LinearLayout?=null;private var batteryLevel=-1
     private var resumed=false;private var sessionGeneration=0
     private val gate=UnlockGate()
@@ -46,6 +47,8 @@ class MainActivity: Activity() {
     private val textColor:Int get()=theme.text
     private val muted:Int get()=theme.muted
     private val tick=object: Runnable {override fun run() {if(!resumed)return;updateClock();handler.postDelayed(this,60000-System.currentTimeMillis()%60000)}}
+    private val networkCallback=object:android.net.ConnectivityManager.NetworkCallback(){override fun onAvailable(network:android.net.Network){handler.post{if(resumed)updateAtlasState()}};override fun onLost(network:android.net.Network){handler.post{if(resumed)updateAtlasState()}}}
+    private fun updateAtlasState(){val mode=if(prefs.getBoolean("atlas_integrated",false))"INTEGRADO"else"CHATGPT OFICIAL";val online=AtlasApi(this).connected();atlasHomeButton?.text="ATLAS\n$mode / ${if(online)"REDE DISPONÍVEL"else"OFFLINE"}"}
     private val broadcast=object: BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             when(i.action) {
@@ -88,13 +91,14 @@ class MainActivity: Activity() {
     override fun onSaveInstanceState(out: Bundle) {out.putInt("pendingWidget",pendingWidget);out.putBoolean("widgetConfiguring",widgetConfiguring);super.onSaveInstanceState(out)}
     override fun onStart() {
         super.onStart()
+        getSystemService(android.net.ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
         registerReceiver(broadcast,IntentFilter().apply {addAction(Intent.ACTION_BATTERY_CHANGED);addAction(Intent.ACTION_SCREEN_OFF);addAction(Intent.ACTION_USER_PRESENT);addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED);addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)},Context.RECEIVER_NOT_EXPORTED)
         getSystemService(LauncherApps::class.java).registerCallback(packageCallback,handler)
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
-    override fun onResume() {super.onResume();if(drawnTheme!=theme.id){art.themeId=theme.id;art.accent=accent;art.invalidate();show(page)};updateRefresh();resumed=true;updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
+    override fun onResume() {super.onResume();if(drawnTheme!=theme.id){art.themeId=theme.id;art.accent=accent;art.invalidate();show(page)};updateRefresh();resumed=true;updateAtlasState();updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
     override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);access.stop();super.onPause()}
-    override fun onStop() {diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
+    override fun onStop() {getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
@@ -108,7 +112,7 @@ class MainActivity: Activity() {
     private fun add(view: View,parent: LinearLayout=body,weight: Float=0f) {parent.addView(view,LinearLayout.LayoutParams(if(weight>0)0 else -1,if(weight>0)-1 else -2,weight).apply {bottomMargin=dp(10)})}
     private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
-        page=target;drawnTheme=theme.id;Themes.tag(root,"root",theme);column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
+        page=target;drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
         val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
         header.addView(mono(when(theme.id){Themes.TERMINAL->">_ NEON";Themes.CORPORATE->"NEON / INDUSTRIES";else->"N / OS"},14f),LinearLayout.LayoutParams(0,-2,1f));header.addView(mono(if(isDefaultHome())"LAUNCHER" else "COMPANION",9f,muted));column.addView(header)
         val scroll=ScrollView(this).apply {isFillViewport=true;isVerticalScrollBarEnabled=false}
@@ -125,7 +129,7 @@ class MainActivity: Activity() {
         val badge=panel();badge.addView(mono(if(theme.mono)"[ SYSTEM / ONLINE ]" else "CORE ONLINE",11f));badge.addView(label(when(theme.id){Themes.TERMINAL->"session.local > ready_";Themes.CORPORATE->"Your time. Company standard.";else->"Seu mundo. Outra frequência."},18f));battery=mono(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",10f,muted);badge.addView(battery);add(badge)
         if(!isDefaultHome()) {add(label("Modo recomendado · HyperOS preservado",12f,muted));add(button("PERSONALIZAR O POCO LAUNCHER") {nativeSetup()})}
         val atlas=button("ATLAS") {startActivity(Intent(this,AtlasEntryActivity::class.java))}
-        atlas.setOnLongClickListener {openAtlas();true};Themes.tag(atlas,"atlas-home",theme);add(atlas)
+        atlas.setOnLongClickListener {openAtlas();true};Themes.tag(atlas,"atlas-home",theme);atlasHomeButton=atlas;updateAtlasState();add(atlas)
         add(mono("QUICK ACCESS",11f))
         val fav=prefs.getStringSet("favorites",emptySet())?:emptySet()
         val chosen=apps.filter {it.key in fav}.ifEmpty {apps.filter {it.component.packageName!=packageName}.take(8)}
@@ -239,7 +243,7 @@ class MainActivity: Activity() {
         add(mono("PALETA"))
         val palette=LinearLayout(this)
         for((name,color) in listOf("CYAN" to Color.rgb(58,242,228),"VIOLET" to Color.rgb(176,122,255),"MAGENTA" to Color.rgb(255,91,197),"RED" to Color.rgb(255,105,115))) {
-            val b=label(name,10f,color).apply {gravity=Gravity.CENTER;setPadding(0,dp(18),0,dp(18));isFocusable=true;setOnClickListener {prefs.edit().putInt("accent",color).apply();art.accent=color;art.invalidate();iconCache.evictAll();show("CONFIG")}};palette.addView(b,LinearLayout.LayoutParams(0,-2,1f))
+            val b=label(name,10f,color).apply {gravity=Gravity.CENTER;setPadding(0,dp(18),0,dp(18));isFocusable=true;setOnClickListener {prefs.edit().putInt("accent",color).apply();NeonWidget.refresh(this@MainActivity);AtlasWidget.refresh(this@MainActivity);art.accent=color;art.invalidate();iconCache.evictAll();show("CONFIG")}};palette.addView(b,LinearLayout.LayoutParams(0,-2,1f))
         };add(palette)
         add(button("WALLPAPER EXCLUSIVO  /  APLICAR") {wallpaperDialog()})
         add(button("EXPORTAR WALLPAPER PNG") {safeStartForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("image/png").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"NEON-CORE-1220x2712.png"),201)})

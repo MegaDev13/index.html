@@ -10,6 +10,18 @@ object LocalTools {
     val allowed=setOf("open_app","open_settings","open_camera","search_apps","set_theme","show_battery","open_calendar","brightness_settings","web_search")
     fun normalize(s:String)=Normalizer.normalize(s.lowercase(Locale.ROOT),Normalizer.Form.NFD).replace("\\p{M}+".toRegex(),"").trim().trimEnd('.','!','?')
     fun valid(a:LocalAction):Boolean = a.name in allowed && a.value.length<=160 && a.number in 0..100 && when(a.name){"set_theme"->a.value in Themes.ids;"open_app","web_search"->a.value.isNotBlank();else->true}
+    fun description(a:LocalAction):String=when(a.name){
+        "set_theme"->"Ativar o tema "+Themes.titles[Themes.ids.indexOf(a.value).coerceAtLeast(0)]
+        "open_app"->"Abrir o aplicativo ${a.value}"
+        "open_settings"->"Abrir as configurações do Android"
+        "open_camera"->"Abrir a câmera"
+        "search_apps"->"Pesquisar aplicativos: ${a.value}"
+        "show_battery"->"Mostrar a bateria"
+        "open_calendar"->"Abrir o calendário"
+        "brightness_settings"->"Abrir os controles de brilho"
+        "web_search"->"Pesquisar na internet: ${a.value}"
+        else->"Ação não permitida"
+    }
     fun parse(raw:String):LocalAction? {
         val s=normalize(raw)
         if(s.length>200)return null

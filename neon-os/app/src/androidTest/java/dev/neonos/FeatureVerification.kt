@@ -27,7 +27,7 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         val now=SystemClock.uptimeMillis();test.sendPointerSync(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,xy[0].toFloat(),xy[1].toFloat(),0));test.sendPointerSync(MotionEvent.obtain(now,now+25,MotionEvent.ACTION_UP,xy[0].toFloat(),xy[1].toFloat(),0));test.waitForIdleSync();Thread.sleep(250)
     }
     private fun screenshot(name:String){Thread.sleep(400);foreground();val b=test.uiAutomation.takeScreenshot();check(b!=null,"Screenshot unavailable");b!!.let{File(dir,name+".png").outputStream().use {s->it.compress(Bitmap.CompressFormat.PNG,100,s)};it.recycle()}}
-    private fun startMain():MainActivity=(test.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity).also{test.waitForIdleSync();Thread.sleep(600)}
+    private fun startMain():MainActivity=(test.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity).also{test.waitForIdleSync();Thread.sleep(600)}
     fun run():Int {
         activity=startMain()
         val prefs=context.getSharedPreferences("neon",0)
@@ -86,6 +86,19 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         while(!atlasText("FIXTURE DE INTEGRAÇÃO")&&SystemClock.elapsedRealtime()<until)Thread.sleep(100)
         check(atlasText("FIXTURE DE INTEGRAÇÃO"),"Android/authenticated backend integration failed")
         screenshot("atlas-integrated-fixture")
+        fun shell(command:String){test.uiAutomation.executeShellCommand(command).use{android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use{stream->stream.readBytes()}}}
+        try {
+            shell("svc wifi disable");shell("svc data disable")
+            val deadline=SystemClock.elapsedRealtime()+6000
+            while(api.connected()&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(150)
+            check(!api.connected(),"Emulator network did not turn off; offline test cannot be claimed")
+            main{atlas.submit("Pergunta de teste sem rede")};test.waitForIdleSync()
+            check(atlasText("Sem conexão. A IA está indisponível"),"Offline AI did not report unavailable")
+            main{atlas.submit("Mostre minha bateria")};test.waitForIdleSync()
+            val h=AtlasStorage(context).history();check(h.getJSONObject(h.length()-1).getString("text").startsWith("Bateria:"),"Local action failed offline")
+            screenshot("atlas-offline")
+            evidence.put("offline_local_action_verified",true)
+        }finally{shell("svc wifi enable");shell("svc data enable")}
         val secureBytes=File(context.filesDir,"atlas.secure").readBytes().toString(Charsets.ISO_8859_1)
         check(!secureBytes.contains(login.getString("token")),"Bearer token stored as plaintext")
         check(!secureBytes.contains("FIXTURE"),"History stored as plaintext")

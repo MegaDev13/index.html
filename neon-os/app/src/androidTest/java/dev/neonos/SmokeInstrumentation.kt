@@ -21,11 +21,15 @@ class SmokeInstrumentation: Instrumentation() {
     override fun onStart() {
         val result=Bundle()
         try {
-            val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+            val activity=startActivitySync(Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
             waitForIdleSync()
             val dir=File(targetContext.getExternalFilesDir(null),"verification").apply{mkdirs()}
             val window=activity.window.decorView
-            fun unobstructed() {check(uiAutomation.rootInActiveWindow?.packageName?.toString()==targetContext.packageName,"System dialog or foreign window covers NEON")}
+            fun unobstructed() {
+                val until=SystemClock.elapsedRealtime()+5000
+                while(uiAutomation.rootInActiveWindow?.packageName?.toString()!=targetContext.packageName && SystemClock.elapsedRealtime()<until)Thread.sleep(150)
+                check(uiAutomation.rootInActiveWindow?.packageName?.toString()==targetContext.packageName,"System dialog or foreign window covers NEON: ${uiAutomation.rootInActiveWindow?.packageName}")
+            }
             fun click(text:String) {
                 unobstructed()
                 if(text in setOf("HOME","GRID","STATUS","CONFIG")) {
@@ -105,6 +109,8 @@ class SmokeInstrumentation: Instrumentation() {
             assertions+=FeatureVerification(this,dir).run()
             result.putString("stream","NEON emulator smoke passed: $assertions assertions. Actual images and process profiling exported. Physical HyperOS not tested.\n")
             result.putInt("assertions",assertions);finish(Activity.RESULT_OK,result)
-        } catch(error:Throwable) {result.putString("stream","FAIL: ${error.stackTraceToString()}");finish(Activity.RESULT_CANCELED,result)}
+        } catch(error:Throwable) {
+            try {val folder=File(targetContext.getExternalFilesDir(null),"verification").apply{mkdirs()};uiAutomation.takeScreenshot()?.let{b->File(folder,"failure.png").outputStream().use{b.compress(Bitmap.CompressFormat.PNG,100,it)};b.recycle()};File(folder,"failure-window.txt").writeText(uiAutomation.rootInActiveWindow.toString())}catch(_:Exception){}
+            result.putString("stream","FAIL: ${error.stackTraceToString()}");finish(Activity.RESULT_CANCELED,result)}
     }
 }
