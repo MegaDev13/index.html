@@ -72,6 +72,25 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         check(official==null,"Unexpected ChatGPT installation: this fixture expects the genuine app absent")
         main{prefs.edit().putBoolean("atlas_integrated",true).remove("atlas_url").commit();AtlasStorage(context).setToken("")}
         val atlas=test.startActivitySync(Intent(context,AtlasActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as AtlasActivity
+        test.waitForIdleSync()
+        fun imeVisible():Boolean {var visible=false;main{visible=atlas.window.decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime())==true};return visible}
+        main{val input=find(atlas.window.decorView){it is EditText}!!;input.requestFocus();atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)}
+        val keyboardDeadline=SystemClock.elapsedRealtime()+5000
+        while(!imeVisible()&&SystemClock.elapsedRealtime()<keyboardDeadline)Thread.sleep(100)
+        check(imeVisible(),"Real keyboard did not open; typing visibility cannot be claimed")
+        test.waitForIdleSync()
+        main{
+            val decor=atlas.window.decorView;val bottom=decor.height-decor.rootWindowInsets.getInsets(WindowInsets.Type.ime()).bottom
+            for(predicate in listOf<(View)->Boolean>({it is EditText},{it is TextView&&it.text.toString()=="ENVIAR"})){
+                val v=find(decor,predicate)!!;val r=android.graphics.Rect()
+                check(v.getGlobalVisibleRect(r)&&r.height()==v.height&&r.bottom<=bottom,"Composer or send button covered by keyboard")
+            }
+        }
+        screenshot("atlas-keyboard")
+        main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}
+        val hideDeadline=SystemClock.elapsedRealtime()+5000
+        while(imeVisible()&&SystemClock.elapsedRealtime()<hideDeadline)Thread.sleep(100)
+        check(!imeVisible(),"Keyboard did not close after typing verification")
         test.waitForIdleSync();main{atlas.submit("Olá, como você está?")};test.waitForIdleSync()
         fun atlasText(fragment:String):Boolean {var found=false;main{found=find(atlas.window.decorView){it is TextView&&it.text.toString().contains(fragment)}!=null};return found}
         check(atlasText("integrado não configurado"),"Unconfigured integration does not explain error");screenshot("atlas-not-configured")

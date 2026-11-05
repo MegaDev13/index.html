@@ -64,7 +64,7 @@ class AtlasActivity:Activity() {
     private var ttsReady=false
     private val stopMic=Runnable{recognizer?.cancel();orb.status("PRONTO");status.text="Microfone encerrado por limite de tempo."}
     override fun onCreate(state:Bundle?) {
-        super.onCreate(state);compact=intent.getBooleanExtra("compact",false)
+        super.onCreate(state);window.setDecorFitsSystemWindows(false);compact=intent.getBooleanExtra("compact",false)
         messages=secure.history();render()
 
     }
@@ -84,7 +84,6 @@ class AtlasActivity:Activity() {
         frame.addView(ArtView(this,theme.accent),android.widget.FrameLayout.LayoutParams(-1,-1))
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(18),dp(12),dp(18),dp(8));Themes.tag(this,"atlas-root",theme)}
         frame.addView(root,android.widget.FrameLayout.LayoutParams(-1,-1))
-        frame.setOnApplyWindowInsetsListener{_,insets->val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout());root.setPadding(dp(18)+b.left,dp(12)+b.top,dp(18)+b.right,dp(8)+b.bottom);insets}
         setContentView(frame)
         val header=LinearLayout(this)
         header.addView(text(if(theme.mono)"[ ATLAS / CORE ]"else "ATLAS",24f,theme.accent),LinearLayout.LayoutParams(0,-2,1f))
@@ -100,12 +99,20 @@ class AtlasActivity:Activity() {
         transcript=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
         messageScroll=ScrollView(this).apply{addView(transcript);isFillViewport=false}
         root.addView(messageScroll,LinearLayout.LayoutParams(-1,0,1f));renderMessages()
-        if(!compact)add(text("Comandos locais funcionam sem IA. No modo integrado, o texto enviado vai ao seu backend. Histórico separado do ChatGPT.",11f,theme.muted))
+        val guidance=if(!compact)text("Comandos locais funcionam sem IA. No modo integrado, o texto enviado vai ao seu backend. Histórico separado do ChatGPT.",11f,theme.muted).also{add(it)}else null
         composer=EditText(this).apply {hint=if(theme.mono)"user@atlas > comando ou mensagem_" else "Comando local ou mensagem";setTextColor(theme.text);setHintTextColor(theme.muted);textSize=15f;typeface=Typeface.create(theme.font,Typeface.NORMAL);maxLines=3;background=theme.background(this@AtlasActivity,true);setPadding(dp(12),dp(10),dp(12),dp(10));setText(draft);contentDescription="Mensagem para ATLAS";Themes.tag(this,"atlas-input",theme)};add(composer)
         val actions=LinearLayout(this)
         actions.addView(button("FALAR"){listen()},LinearLayout.LayoutParams(0,-2,1f))
         actions.addView(button("ENVIAR"){submit(composer.text.toString())},LinearLayout.LayoutParams(0,-2,1f))
         actions.addView(button("VOLTAR"){finish()},LinearLayout.LayoutParams(0,-2,1f));add(actions)
+        frame.setOnApplyWindowInsetsListener{_,insets->
+            val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            val typing=insets.isVisible(WindowInsets.Type.ime())
+            root.setPadding(dp(18)+b.left,dp(12)+b.top,dp(18)+b.right,dp(8)+maxOf(b.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom))
+            orb.visibility=if(typing)View.GONE else View.VISIBLE
+            guidance?.visibility=if(typing)View.GONE else View.VISIBLE
+            insets
+        };frame.requestApplyInsets()
         refreshStatus()
         if(!prefs.getBoolean("instant",false)&&!prefs.getBoolean("saver",false)){root.alpha=.3f;root.animate().alpha(1f).setDuration(220).start()}
     }
