@@ -48,6 +48,7 @@ class MainActivity: Activity() {
         override fun onReceive(c: Context, i: Intent) {
             when(i.action) {
                 Intent.ACTION_BATTERY_CHANGED -> {val scale=i.getIntExtra("scale",100);batteryLevel=if(scale>0)i.getIntExtra("level",0)*100/scale else -1;battery?.text=if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —"}
+                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> updateRefresh()
                 Intent.ACTION_SCREEN_OFF -> gate.observeLocked()
                 Intent.ACTION_USER_PRESENT -> {gate.userPresent(SystemClock.elapsedRealtime());maybeAccess()}
                 Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED -> updateClock()
@@ -85,7 +86,7 @@ class MainActivity: Activity() {
     override fun onSaveInstanceState(out: Bundle) {out.putInt("pendingWidget",pendingWidget);out.putBoolean("widgetConfiguring",widgetConfiguring);super.onSaveInstanceState(out)}
     override fun onStart() {
         super.onStart()
-        registerReceiver(broadcast,IntentFilter().apply {addAction(Intent.ACTION_BATTERY_CHANGED);addAction(Intent.ACTION_SCREEN_OFF);addAction(Intent.ACTION_USER_PRESENT);addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED)},Context.RECEIVER_NOT_EXPORTED)
+        registerReceiver(broadcast,IntentFilter().apply {addAction(Intent.ACTION_BATTERY_CHANGED);addAction(Intent.ACTION_SCREEN_OFF);addAction(Intent.ACTION_USER_PRESENT);addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED);addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)},Context.RECEIVER_NOT_EXPORTED)
         getSystemService(LauncherApps::class.java).registerCallback(packageCallback,handler)
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
@@ -93,6 +94,7 @@ class MainActivity: Activity() {
     override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);access.stop();super.onPause()}
     override fun onStop() {diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;io.shutdownNow();super.onDestroy()}
+    override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
     override fun onBackPressed() {if(page!="HOME")show("HOME") else if(!isDefaultHome())super.onBackPressed()}
     private fun dp(v: Int)=(v*resources.displayMetrics.density).toInt()
@@ -274,6 +276,7 @@ class MainActivity: Activity() {
     private fun maybeAccess() {
         if(!resumed)return
         val locked=getSystemService(KeyguardManager::class.java).isKeyguardLocked
+        if(!locked && window.decorView.hasWindowFocus())gate.visibleUnlocked(SystemClock.elapsedRealtime())
         if(gate.consume(SystemClock.elapsedRealtime(),locked) && isDefaultHome() && page=="HOME")playAccess()
     }
     private fun playAccess() {

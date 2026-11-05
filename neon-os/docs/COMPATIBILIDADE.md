@@ -9,7 +9,7 @@ A versão instalada do HyperOS só pode ser confirmada no aparelho em Configura�
 ## NEON ACCESS
 Cinco desenhos vetoriais reais, de 200–350 ms, ajustáveis. Usam uma View não clicável sobre a Home NEON: aplicativos continuam recebendo toques. Economia de bateria e animações do sistema desligadas desabilitam o efeito. Modo instantâneo disponível. Som opcional usa fluxo do sistema e respeita modo silencioso.
 
-O evento público USER_PRESENT não revela o método de autenticação. O efeito é universal: nenhuma indicação de rosto/digital/PIN. É exibido apenas depois de bloqueio observado, evento do sistema e Home NEON visível. Sem serviço em segundo plano, eventos podem ser perdidos se o processo for encerrado, se o app não estiver ativo ao bloquear ou se o HyperOS não entregar o evento. Não há efeito sobre outros apps ou sobre o bloqueio real. A prévia na configuração é apenas uma prévia.
+O evento público USER_PRESENT não revela o método de autenticação. O efeito é universal: nenhuma indicação de rosto/digital/PIN. É exibido apenas depois de bloqueio observado, evento USER_PRESENT ou transição pública para keyguard liberado, e Home NEON visível com foco. Sem serviço em segundo plano, eventos podem ser perdidos se o processo for encerrado, se o app não estiver ativo ao bloquear ou se o HyperOS não entregar o evento nem permitir observar a transição de keyguard. Não há efeito sobre outros apps ou sobre o bloqueio real. A prévia na configuração é apenas uma prévia.
 
 ## Referências primárias consultadas em 05/11/2026
 - https://github.com/LawnchairLauncher/docs/blob/main/help/troubleshooting/gesture-navigation-issues.md — documentação do próprio launcher sobre restrições Xiaomi.

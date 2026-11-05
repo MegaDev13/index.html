@@ -13,6 +13,7 @@ class UnlockGate {
     private var armed = false
     private var readyAt = -1L
     fun observeLocked() { armed = true }
+    fun visibleUnlocked(now: Long) { if (armed) { readyAt = now; armed = false } }
     fun userPresent(now: Long) { if (armed) { readyAt = now; armed = false } }
     fun consume(now: Long, locked: Boolean): Boolean {
         if (locked) { observeLocked(); return false }
