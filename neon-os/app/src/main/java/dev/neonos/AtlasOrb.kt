@@ -20,7 +20,7 @@ class AtlasOrb(context:Context):View(context) {
     fun status(value:String) {state=value;contentDescription="Núcleo ATLAS, $value";sync();invalidate()}
     private fun sync() {
         val p=context.getSharedPreferences("neon",0)
-        val enabled=isAttachedToWindow && windowVisibility==VISIBLE && state in setOf("OUVINDO","PROCESSANDO","FALANDO") && !p.getBoolean("saver",false) && !p.getBoolean("instant",false) && !context.getSystemService(PowerManager::class.java).isPowerSaveMode && Settings.Global.getFloat(context.contentResolver,Settings.Global.ANIMATOR_DURATION_SCALE,1f)>0
+        val enabled=isAttachedToWindow && isShown && windowVisibility==VISIBLE && state in setOf("OUVINDO","PROCESSANDO","FALANDO") && !p.getBoolean("saver",false) && !p.getBoolean("instant",false) && !context.getSystemService(PowerManager::class.java).isPowerSaveMode && Settings.Global.getFloat(context.contentResolver,Settings.Global.ANIMATOR_DURATION_SCALE,1f)>0
         if(!enabled){animator?.cancel();animator=null;return}
         if(animator==null) animator=ValueAnimator.ofFloat(0f,1f).apply {duration=2200;repeatCount=ValueAnimator.INFINITE;addUpdateListener{phase=it.animatedValue as Float;invalidate()};start()}
     }
@@ -28,6 +28,7 @@ class AtlasOrb(context:Context):View(context) {
     override fun onAttachedToWindow(){super.onAttachedToWindow();sync()}
     override fun onDetachedFromWindow(){stop();super.onDetachedFromWindow()}
     override fun onWindowVisibilityChanged(v:Int){super.onWindowVisibilityChanged(v);sync()}
+    override fun onVisibilityChanged(changedView:View,v:Int){super.onVisibilityChanged(changedView,v);sync()}
     override fun onDraw(c:Canvas){drawCore(c,width.toFloat(),height.toFloat(),spec,phase,if(state=="OUVINDO")rms.coerceIn(0f,1f)else 0f,paint)}
     companion object {
         fun thumbnail(t:ThemeSpec,size:Int):Bitmap {val b=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888);drawCore(Canvas(b),size.toFloat(),size.toFloat(),t,0f,0f,Paint(Paint.ANTI_ALIAS_FLAG));return b}
