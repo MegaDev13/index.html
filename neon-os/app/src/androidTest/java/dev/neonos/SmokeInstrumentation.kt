@@ -28,7 +28,7 @@ class SmokeInstrumentation: Instrumentation() {
             fun click(text:String) {runOnMainSync {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.performClick()};waitForIdleSync()}
             fun screenshot(name:String) {Thread.sleep(350);uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
             Thread.sleep(1300);waitForIdleSync()
-            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions.toSet()==setOf("android.permission.SET_WALLPAPER"),"Unexpected permission")
+            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER"),"Unexpected permission")
             runOnMainSync {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
             screenshot("01-home")
             click("GRID");runOnMainSync {check(find(window,"Aplicativos")!=null,"Grid title missing")};screenshot("02-grid")
@@ -62,7 +62,26 @@ class SmokeInstrumentation: Instrumentation() {
             val settings=entries.firstOrNull {it.component.packageName=="com.android.settings"}
             check(settings!=null,"Settings launcher entry missing")
             runOnMainSync {AppRepository(targetContext).open(settings!!)};Thread.sleep(350)
-            val bitmap=NeonArt.wallpaper(122,271,android.graphics.Color.CYAN);check(bitmap.width==122 && bitmap.height==271,"Wallpaper dimensions");bitmap.recycle()
+            uiAutomation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")
+            try {
+                runOnMainSync {
+                    val host=android.appwidget.AppWidgetHost(targetContext,9923)
+                    val id=host.allocateAppWidgetId()
+                    try {
+                        val manager=android.appwidget.AppWidgetManager.getInstance(targetContext)
+                        check(manager.bindAppWidgetIdIfAllowed(id,ComponentName(targetContext,NeonWidget::class.java)),"Widget bind failed")
+                        val info=manager.getAppWidgetInfo(id)
+                        check(info!=null,"Widget info missing")
+                        host.startListening()
+                        val widget=host.createView(activity,id,info)
+                        check(widget.appWidgetId==id,"Widget host view wrong id")
+                        host.stopListening()
+                    } finally {host.deleteAppWidgetId(id)}
+                    check(id !in host.appWidgetIds,"Widget id leaked")
+                }
+            } finally {uiAutomation.dropShellPermissionIdentity()}
+            val bitmap=NeonArt.wallpaper(1220,2712,android.graphics.Color.rgb(58,242,228));check(bitmap.width==1220 && bitmap.height==2712,"Wallpaper dimensions")
+            File(dir,"NEON-CORE-1220x2712.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
             result.putString("stream","NEON emulator smoke passed: $assertions assertions. Actual images and process profiling exported. Physical HyperOS not tested.\n")
             result.putInt("assertions",assertions);finish(Activity.RESULT_OK,result)
         } catch(error:Throwable) {result.putString("stream","FAIL: ${error.stackTraceToString()}");finish(Activity.RESULT_CANCELED,result)}

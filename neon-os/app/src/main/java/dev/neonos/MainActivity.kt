@@ -39,8 +39,7 @@ class MainActivity: Activity() {
     private val widgetManager by lazy { AppWidgetManager.getInstance(this) }
     private var pendingWidget=-1
     private var widgetConfiguring=false
-    private var currentWallpaper: Bitmap?=null
-    private var diagnosticText=""
+        private var diagnosticText=""
     private val accent: Int get()=prefs.getInt("accent",Color.rgb(58,242,228))
     private val textColor=Color.rgb(233,242,250)
     private val muted=Color.rgb(153,171,190)
@@ -80,6 +79,7 @@ class MainActivity: Activity() {
         }
         access=AccessView(this);root.addView(access,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
+        for(id in widgetHost.appWidgetIds)if(id!=pendingWidget && id.toString() !in savedWidgets())widgetHost.deleteAppWidgetId(id)
         show("HOME");loadApps()
     }
     override fun onSaveInstanceState(out: Bundle) {out.putInt("pendingWidget",pendingWidget);out.putBoolean("widgetConfiguring",widgetConfiguring);super.onSaveInstanceState(out)}
@@ -89,10 +89,10 @@ class MainActivity: Activity() {
         getSystemService(LauncherApps::class.java).registerCallback(packageCallback,handler)
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
-    override fun onResume() {super.onResume();resumed=true;updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
+    override fun onResume() {super.onResume();updateRefresh();resumed=true;updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
     override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);access.stop();super.onPause()}
     override fun onStop() {diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
-    override fun onDestroy() {sessionGeneration++;io.shutdownNow();currentWallpaper?.recycle();super.onDestroy()}
+    override fun onDestroy() {sessionGeneration++;io.shutdownNow();super.onDestroy()}
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
     override fun onBackPressed() {if(page!="HOME")show("HOME") else if(!isDefaultHome())super.onBackPressed()}
     private fun dp(v: Int)=(v*resources.displayMetrics.density).toInt()
@@ -219,6 +219,7 @@ class MainActivity: Activity() {
         switch("Modo instantâneo", "instant",false)
         switch("Modo econômico · sem animação", "saver",false)
         switch("Som curto opcional", "sound",false)
+        switch("Solicitar até 120 Hz", "highRefresh",false)
         switch("Fonte monoespaçada", "mono",false)
         slider("Duração", "duration",200,350,280," ms")
         slider("Brilho do efeito", "brightness",10,100,80,"%")
@@ -245,7 +246,12 @@ class MainActivity: Activity() {
         add(label("NEON OS 0.1.1 · sem anúncios, câmera, internet, acessibilidade ou serviço permanente.\nNão modifica apps, SystemUI, AOD ou o mecanismo de bloqueio.",12f,muted))
     }
     private fun switch(title:String,key:String,default:Boolean) {
-        val control=Switch(this).apply {text=title;setTextColor(textColor);textSize=14f;isChecked=prefs.getBoolean(key,default);setPadding(0,dp(6),0,dp(6));setOnCheckedChangeListener{_,checked->prefs.edit().putBoolean(key,checked).apply()}};add(control)
+        val control=Switch(this).apply {text=title;setTextColor(textColor);textSize=14f;isChecked=prefs.getBoolean(key,default);setPadding(0,dp(6),0,dp(6));setOnCheckedChangeListener{_,checked->prefs.edit().putBoolean(key,checked).apply();if(key=="highRefresh"||key=="saver")updateRefresh()}};add(control)
+    }
+    private fun updateRefresh() {
+        val power=getSystemService(PowerManager::class.java).isPowerSaveMode||prefs.getBoolean("saver",false)
+        val requested=if(prefs.getBoolean("highRefresh",false)&&!power)minOf(120f,display?.supportedModes?.maxOfOrNull {it.refreshRate}?:60f)else 0f
+        window.attributes=window.attributes.apply {preferredRefreshRate=requested}
     }
     private fun slider(title:String,key:String,min:Int,max:Int,default:Int,suffix:String) {
         val caption=label("$title: ${prefs.getInt(key,default)}$suffix",13f,muted);add(caption)
