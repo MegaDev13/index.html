@@ -85,6 +85,8 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         val until=SystemClock.elapsedRealtime()+15000
         while(!atlasText("FIXTURE DE INTEGRAÇÃO")&&SystemClock.elapsedRealtime()<until)Thread.sleep(100)
         check(atlasText("FIXTURE DE INTEGRAÇÃO"),"Android/authenticated backend integration failed")
+        test.waitForIdleSync()
+        main{val reply=find(atlas.window.decorView){it is TextView&&it.text.toString().contains("FIXTURE DE INTEGRAÇÃO")};check(reply?.getGlobalVisibleRect(android.graphics.Rect())==true,"Newest API reply is outside the visible transcript")}
         screenshot("atlas-integrated-fixture")
         fun shell(command:String){test.uiAutomation.executeShellCommand(command).use{android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use{stream->stream.readBytes()}}}
         try {

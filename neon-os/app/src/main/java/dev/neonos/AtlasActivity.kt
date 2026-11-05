@@ -54,6 +54,7 @@ class AtlasActivity:Activity() {
     private lateinit var root:LinearLayout
     private lateinit var composer:EditText
     private lateinit var transcript:LinearLayout
+    private lateinit var messageScroll:ScrollView
     private lateinit var status:TextView
     private lateinit var orb:AtlasOrb
     private val networkCallback=object:android.net.ConnectivityManager.NetworkCallback(){override fun onAvailable(network:android.net.Network){main.post{if(active)refreshStatus()}};override fun onLost(network:android.net.Network){main.post{if(active)refreshStatus()}}}
@@ -97,8 +98,8 @@ class AtlasActivity:Activity() {
         controls.addView(button("ABRIR CHATGPT"){if(!OfficialChatGpt.open(this))OfficialChatGpt.help(this)},LinearLayout.LayoutParams(0,-2,1f))
         controls.addView(button("CONFIGURAR"){configuration()},LinearLayout.LayoutParams(0,-2,1f));add(controls)
         transcript=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
-        val scroll=ScrollView(this).apply{addView(transcript);isFillViewport=false}
-        root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));renderMessages()
+        messageScroll=ScrollView(this).apply{addView(transcript);isFillViewport=false}
+        root.addView(messageScroll,LinearLayout.LayoutParams(-1,0,1f));renderMessages()
         if(!compact)add(text("Comandos locais funcionam sem IA. No modo integrado, o texto enviado vai ao seu backend. Histórico separado do ChatGPT.",11f,theme.muted))
         composer=EditText(this).apply {hint=if(theme.mono)"user@atlas > comando ou mensagem_" else "Comando local ou mensagem";setTextColor(theme.text);setHintTextColor(theme.muted);textSize=15f;typeface=Typeface.create(theme.font,Typeface.NORMAL);maxLines=3;background=theme.background(this@AtlasActivity,true);setPadding(dp(12),dp(10),dp(12),dp(10));setText(draft);contentDescription="Mensagem para ATLAS";Themes.tag(this,"atlas-input",theme)};add(composer)
         val actions=LinearLayout(this)
@@ -123,6 +124,8 @@ class AtlasActivity:Activity() {
             card.addView(text(m.optString("source"),10f,theme.accent));card.addView(text(m.optString("text"),14f))
             transcript.addView(card,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(8)})
         }
+        val viewport=messageScroll
+        viewport.post{viewport.fullScroll(View.FOCUS_DOWN)}
     }
     private fun record(source:String,value:String) {
         val entry=JSONObject().put("source",source).put("text",value.take(8000)).put("time",System.currentTimeMillis())
