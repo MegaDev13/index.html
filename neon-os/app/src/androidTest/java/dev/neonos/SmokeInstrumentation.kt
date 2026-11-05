@@ -50,7 +50,8 @@ class SmokeInstrumentation: Instrumentation() {
                     val view=AccessView(activity).apply {this.effect=effect}
                     val holder=window as ViewGroup;holder.addView(view,ViewGroup.LayoutParams(-1,-1));view.play(280)
                     Handler(Looper.getMainLooper()).postDelayed({holder.removeView(view)},320)
-                };Thread.sleep(380)
+                };Thread.sleep(130)
+                uiAutomation.takeScreenshot()?.let {image->File(dir,"effect-${effect+1}.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()};Thread.sleep(250)
             }
             runOnMainSync {
                 val json=measurement.report();check(json.getLong("pss_kib")>0,"Memory not measured");check(json.getInt("frames")>0,"No frames recorded");File(dir,"profiling-emulator.json").writeText(json.toString(2));measurement.stop()

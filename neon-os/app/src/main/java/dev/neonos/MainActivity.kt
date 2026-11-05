@@ -111,7 +111,7 @@ class MainActivity: Activity() {
         column.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         when(target) {"HOME"->home();"GRID"->grid();"STATUS"->status();else->config()}
         val nav=LinearLayout(this).apply {setPadding(0,dp(8),0,dp(8));gravity=Gravity.CENTER}
-        for(name in listOf("HOME","GRID","STATUS","CONFIG")) {val b=label(name,10f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {show(name)}};nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
+        for(name in listOf("HOME","GRID","STATUS","CONFIG")) {val b=label(name,12f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {show(name)}};nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
     }
     private fun home() {
         add(mono("PERSONAL TERMINAL   /   01"))
@@ -161,7 +161,7 @@ class MainActivity: Activity() {
                 val frame=FrameLayout(this).apply {background=GradientDrawable().apply {setColor(Color.rgb(8,18,27));cornerRadius=dp(16).toFloat();setStroke(dp(1),accent)}}
                 val icon=ImageView(this).apply {setPadding(dp(11),dp(11),dp(11),dp(11));importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO}
                 frame.addView(icon,FrameLayout.LayoutParams(-1,-1));tile.addView(frame,LinearLayout.LayoutParams(dp(58),dp(58)))
-                val title=label(app.label,10f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
+                val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
                 tile.setOnClickListener {try {access.stop();repo.open(app)}catch(_:Exception){toast("Aplicativo indisponível ou perfil pausado.");loadApps()}}
                 tile.setOnLongClickListener {appMenu(app);true}
                 val key=prefs.getString("iconPack","")+app.key
@@ -304,7 +304,7 @@ class MainActivity: Activity() {
             if(info==null){widgetHost.deleteAppWidgetId(id);val all=savedWidgets();all.remove(key);prefs.edit().putStringSet("widgets",all).apply();continue}
             try {
                 val card=panel();val view=widgetHost.createView(this,id,info)
-                val width=resources.configuration.screenWidthDp-74;val height=maxOf(110,info.minHeight.coerceAtMost(dp(340))/resources.displayMetrics.density.toInt().coerceAtLeast(1))
+                val width=resources.configuration.screenWidthDp-74;val height=maxOf(110,(info.minHeight.coerceAtMost(dp(340))/resources.displayMetrics.density).toInt())
                 view.updateAppWidgetSize(null,width,height,width,height)
                 card.addView(view,LinearLayout.LayoutParams(-1,dp(height)))
                 card.addView(button("REMOVER WIDGET") {AlertDialog.Builder(this).setMessage("Remover este widget da Home NEON?").setPositiveButton("Remover"){_,_->widgetHost.deleteAppWidgetId(id);val all=savedWidgets();all.remove(key);prefs.edit().putStringSet("widgets",all).apply();show("HOME")}.setNegativeButton("Cancelar",null).show()});add(card)

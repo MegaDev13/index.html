@@ -63,7 +63,7 @@ class AccessView(context: Context): View(context) {
     override fun onDraw(c: Canvas) {
         if(progress>=1f)return
         val w=width.toFloat();val h=height.toFloat();val t=progress
-        paint.color=accent;paint.alpha=((1-t)*190*luminance).toInt();paint.style=Paint.Style.STROKE;paint.strokeWidth=2*resources.displayMetrics.density
+        paint.color=accent;paint.alpha=((1-t)*190*luminance*(.35f+.65f*intensity)).toInt();paint.style=Paint.Style.STROKE;paint.strokeWidth=(1+intensity*2)*resources.displayMetrics.density
         when(effect) {
             0 -> for(i in 0..11) { val x=w*(i+1)/13; val yy=h*(.25f+(i%4)*.15f);c.drawLine(w*.5f,h*.5f,x,yy,paint);c.drawCircle(x,yy,3f+t*12,paint) }
             1 -> for(i in 0..7) { val yy=h*(i+.5f)/8;c.drawLine(w*((i%3)*.1f)*t,yy,w*(.6f+t*.4f),yy,paint) }
