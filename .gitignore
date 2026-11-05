@@ -4,3 +4,8 @@
 *.jks
 *.keystore
 signing-private/
+.env
+.env.*
+!.env.example
+*.sqlite3*
+__pycache__/

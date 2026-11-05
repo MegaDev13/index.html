@@ -1,3 +1,13 @@
+# Atualização 0.2.0 — ATLAS e três temas
+
+Continuação da base 0.1.1. Novos temas: Cyberpunk Neon, Dark Terminal e Corporate Dystopia. ATLAS abre o ChatGPT oficial por padrão e oferece um painel integrado opcional com backend autenticado independente.
+
+- [ATLAS: instalação, API, voz e limites](docs/ATLAS-CONFIGURACAO.md)
+- [Componentes dos três temas](docs/TEMAS-0.2.0.md)
+- [Relatório atual](docs/RELATORIO.md)
+
+Abertura do ChatGPT genuíno e compatibilidade física do POCO exigem o aparelho. O teste Android/backend usa fixture explicitamente identificada; uma resposta OpenAI real exige chave configurada pelo proprietário.
+
 # NEON OS — Cyberpunk Edition
 
 Android nativo em Kotlin para POCO X7 Pro. Projeto independente nesta subpasta, mantido na branch `neon-os` de `MegaDev13/index.html` conforme alternativa autorizada. O site original não é alterado.

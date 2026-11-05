@@ -7,12 +7,13 @@ import android.view.View
 import kotlin.math.*
 
 object NeonArt {
-    fun wallpaper(width: Int, height: Int, accent: Int): Bitmap {
+    fun wallpaper(width: Int, height: Int, accent: Int, themeId: String=Themes.NEON): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bitmap), width.toFloat(), height.toFloat(), accent)
+        draw(Canvas(bitmap), width.toFloat(), height.toFloat(), accent,themeId)
         return bitmap
     }
-    fun draw(c: Canvas, w: Float, h: Float, accent: Int) {
+    fun draw(c: Canvas, w: Float, h: Float, accent: Int,themeId:String=Themes.NEON) {
+        if(themeId!=Themes.NEON) {drawAlternate(c,w,h,Themes.spec(themeId));return}
         c.drawColor(Color.BLACK)
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         p.shader = RadialGradient(w*.55f,h*.54f,w*.7f,intArrayOf(Color.rgb(9,28,37),Color.BLACK),null,Shader.TileMode.CLAMP)
@@ -40,9 +41,22 @@ object NeonArt {
         p.color=Color.rgb(47,78,88);p.textSize=7f;c.drawText("PERSONAL TERMINAL  //  01",26f,48f,p)
         c.restore()
     }
+    private fun drawAlternate(c:Canvas,w:Float,h:Float,t:ThemeSpec) {
+        c.drawColor(Color.BLACK)
+        val p=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=t.stroke;strokeWidth=1f}
+        val unit=w/400f
+        c.drawLine(24*unit,0f,24*unit,h,p);c.drawLine(w-24*unit,0f,w-24*unit,h,p)
+        for(i in 1..4)c.drawLine(0f,h*i/5,w,h*i/5,p)
+        p.color=t.secondary;p.typeface=Typeface.MONOSPACE;p.textSize=8*unit
+        c.drawText(if(t.id==Themes.TERMINAL)"SYS://NEON  >_" else "PERSONNEL SYSTEMS / 01",30*unit,48*unit,p)
+        c.drawText(if(t.id==Themes.TERMINAL)"[ LOCAL NODE / READY ]" else "AUTHORIZED PERSONAL TERMINAL",30*unit,h-32*unit,p)
+        if(t.id==Themes.CORPORATE) {p.color=t.accent;c.drawRect(w-50*unit,70*unit,w-30*unit,74*unit,p)}
+    }
+
 }
 class ArtView(context: Context, var accent: Int): View(context) {
-    override fun onDraw(canvas: Canvas) { NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent) }
+    var themeId=Themes.current(context).id
+    override fun onDraw(canvas: Canvas) { NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent,themeId) }
 }
 class AccessView(context: Context): View(context) {
     var accent=Color.CYAN; var effect=2; var intensity=.65f; var luminance=.8f

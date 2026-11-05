@@ -25,6 +25,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Isolated backend authentication, quotas and API contract tests
+        run: python3 -m unittest discover -s neon-os/backend/tests -v
       - name: Unit tests, lint and APK compilation
         working-directory: neon-os
         run: gradle testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest assembleRelease --console=plain
@@ -52,6 +54,7 @@ jobs:
           cp -r neon-os/app/build/reports neon-delivery/ || true
           cp -r neon-os/verification neon-delivery/ || true
           cp neon-os/docs/* neon-delivery/ || true
+          cp -r neon-os/backend neon-delivery/backend-source
       - uses: actions/upload-artifact@v4
         if: always()
         with:

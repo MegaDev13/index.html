@@ -21,7 +21,7 @@ class Diagnostics(private val activity: Activity) {
         val memory=Debug.MemoryInfo();Debug.getMemoryInfo(memory)
         val elapsed=if(running)SystemClock.elapsedRealtime()-start else frozenElapsed
         val cpu=if(running)android.os.Process.getElapsedCpuTime()-cpuStart else frozenCpu
-        return JSONObject().put("app","NEON OS 0.1.1").put("device",Build.MODEL).put("android",Build.VERSION.RELEASE).put("sdk",Build.VERSION.SDK_INT).put("build",Build.DISPLAY).put("fingerprint",Build.FINGERPRINT)
+        return JSONObject().put("app","NEON OS 0.2.0").put("device",Build.MODEL).put("android",Build.VERSION.RELEASE).put("sdk",Build.VERSION.SDK_INT).put("build",Build.DISPLAY).put("fingerprint",Build.FINGERPRINT)
             .put("scope","Processo NEON nesta sessão; não é benchmark do aparelho nem latência biométrica")
             .put("session_ms",elapsed).put("cpu_process_ms",cpu).put("cpu_one_core_percent",if(elapsed>0)cpu*100.0/elapsed else 0.0)
             .put("pss_kib",memory.totalPss).put("java_heap_bytes",Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())

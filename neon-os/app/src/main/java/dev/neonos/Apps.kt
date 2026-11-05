@@ -50,12 +50,38 @@ class IconPack(private val context: Context) {
     }
 }
 class NeonWidget: AppWidgetProvider() {
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        for(id in ids) {
-            val views=RemoteViews(context.packageName,R.layout.neon_widget)
-            views.setOnClickPendingIntent(R.id.widget_root,PendingIntent.getActivity(context,0,Intent(context,MainActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            manager.updateAppWidget(id,views)
+    override fun onUpdate(context:Context,manager:AppWidgetManager,ids:IntArray) {
+        for(id in ids)manager.updateAppWidget(id,views(context))
+    }
+    companion object {
+        fun views(context:Context):RemoteViews {
+            val t=Themes.current(context)
+            val layout=when(t.id){Themes.TERMINAL->R.layout.neon_widget_terminal;Themes.CORPORATE->R.layout.neon_widget_corporate;else->R.layout.neon_widget_neon}
+            return RemoteViews(context.packageName,layout).apply {
+                setTextViewText(R.id.widget_brand,when(t.id){Themes.TERMINAL->"SYS.TIME / >_";Themes.CORPORATE->"PERSONNEL / TIME";else->"N E O N / C O R E"})
+                setTextColor(R.id.widget_brand,t.accent)
+                setOnClickPendingIntent(R.id.widget_root,PendingIntent.getActivity(context,0,Intent(context,MainActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            }
         }
+        fun refresh(context:Context) {val m=AppWidgetManager.getInstance(context);NeonWidget().onUpdate(context,m,m.getAppWidgetIds(ComponentName(context,NeonWidget::class.java)))}
+    }
+}
+class AtlasWidget:AppWidgetProvider() {
+    override fun onUpdate(context:Context,manager:AppWidgetManager,ids:IntArray) {for(id in ids)manager.updateAppWidget(id,views(context))}
+    companion object {
+        fun views(context:Context):RemoteViews {
+            val t=Themes.current(context)
+            val layout=when(t.id){Themes.TERMINAL->R.layout.atlas_widget_terminal;Themes.CORPORATE->R.layout.atlas_widget_corporate;else->R.layout.atlas_widget_neon}
+            return RemoteViews(context.packageName,layout).apply {
+                setTextColor(R.id.atlas_widget_title,t.accent)
+                setTextViewText(R.id.atlas_widget_title,if(t.mono)"[ ATLAS ]" else "ATLAS")
+                setTextViewText(R.id.atlas_widget_mode,if(context.getSharedPreferences("neon",0).getBoolean("atlas_integrated",false))"INTEGRADO / ACIONAR" else "CHATGPT OFICIAL / ACIONAR")
+                setImageViewBitmap(R.id.atlas_widget_orb,AtlasOrb.thumbnail(t,128))
+                setOnClickPendingIntent(R.id.atlas_widget_root,PendingIntent.getActivity(context,11,Intent(context,AtlasEntryActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+                setOnClickPendingIntent(R.id.atlas_widget_panel,PendingIntent.getActivity(context,12,Intent(context,AtlasActivity::class.java).putExtra("compact",true),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            }
+        }
+        fun refresh(context:Context) {val m=AppWidgetManager.getInstance(context);AtlasWidget().onUpdate(context,m,m.getAppWidgetIds(ComponentName(context,AtlasWidget::class.java)))}
     }
 }
 class PinActivity: Activity() {

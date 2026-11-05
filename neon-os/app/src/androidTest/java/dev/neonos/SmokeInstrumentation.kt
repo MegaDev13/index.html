@@ -39,7 +39,7 @@ class SmokeInstrumentation: Instrumentation() {
             }
             fun screenshot(name:String) {Thread.sleep(350);unobstructed();uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
             Thread.sleep(1300);waitForIdleSync()
-            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER"),"Unexpected permission")
+            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER","android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE","android.permission.RECORD_AUDIO"),"Unexpected permission")
             runOnMainSync {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
             screenshot("01-home")
             click("GRID");runOnMainSync {check(find(window,"Aplicativos")!=null,"Grid title missing")};screenshot("02-grid")
@@ -102,6 +102,7 @@ class SmokeInstrumentation: Instrumentation() {
             } finally {uiAutomation.dropShellPermissionIdentity()}
             val bitmap=NeonArt.wallpaper(1220,2712,android.graphics.Color.rgb(58,242,228));check(bitmap.width==1220 && bitmap.height==2712,"Wallpaper dimensions")
             File(dir,"NEON-CORE-1220x2712.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+            assertions+=FeatureVerification(this,dir).run()
             result.putString("stream","NEON emulator smoke passed: $assertions assertions. Actual images and process profiling exported. Physical HyperOS not tested.\n")
             result.putInt("assertions",assertions);finish(Activity.RESULT_OK,result)
         } catch(error:Throwable) {result.putString("stream","FAIL: ${error.stackTraceToString()}");finish(Activity.RESULT_CANCELED,result)}

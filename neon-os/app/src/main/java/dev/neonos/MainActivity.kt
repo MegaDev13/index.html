@@ -40,9 +40,11 @@ class MainActivity: Activity() {
     private var pendingWidget=-1
     private var widgetConfiguring=false
         private var diagnosticText=""
-    private val accent: Int get()=prefs.getInt("accent",Color.rgb(58,242,228))
-    private val textColor=Color.rgb(233,242,250)
-    private val muted=Color.rgb(153,171,190)
+    private val theme:ThemeSpec get()=Themes.current(this)
+    private var drawnTheme=""
+    private val accent:Int get()=theme.accent
+    private val textColor:Int get()=theme.text
+    private val muted:Int get()=theme.muted
     private val tick=object: Runnable {override fun run() {if(!resumed)return;updateClock();handler.postDelayed(this,60000-System.currentTimeMillis()%60000)}}
     private val broadcast=object: BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -81,7 +83,7 @@ class MainActivity: Activity() {
         access=AccessView(this);root.addView(access,FrameLayout.LayoutParams(-1,-1))
         setContentView(root)
         for(id in widgetHost.appWidgetIds)if(id!=pendingWidget && id.toString() !in savedWidgets())widgetHost.deleteAppWidgetId(id)
-        show("HOME");loadApps()
+        if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else show("HOME");loadApps()
     }
     override fun onSaveInstanceState(out: Bundle) {out.putInt("pendingWidget",pendingWidget);out.putBoolean("widgetConfiguring",widgetConfiguring);super.onSaveInstanceState(out)}
     override fun onStart() {
@@ -90,37 +92,40 @@ class MainActivity: Activity() {
         getSystemService(LauncherApps::class.java).registerCallback(packageCallback,handler)
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
-    override fun onResume() {super.onResume();updateRefresh();resumed=true;updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
+    override fun onResume() {super.onResume();if(drawnTheme!=theme.id){art.themeId=theme.id;art.accent=accent;art.invalidate();show(page)};updateRefresh();resumed=true;updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
     override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);access.stop();super.onPause()}
     override fun onStop() {diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
-    override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
+    override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
     override fun onBackPressed() {if(page!="HOME")show("HOME") else if(!isDefaultHome())super.onBackPressed()}
+    private fun openAtlas() {startActivity(Intent(this,AtlasActivity::class.java))}
     private fun dp(v: Int)=(v*resources.displayMetrics.density).toInt()
-    private fun isDefaultHome(): Boolean = packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName==packageName
-    private fun label(text: String,size: Float=14f,color: Int=textColor): TextView = TextView(this).apply {this.text=text;textSize=size;setTextColor(color);setPadding(0,dp(5),0,dp(5));typeface=if(prefs.getBoolean("mono",false))Typeface.MONOSPACE else Typeface.create("sans-serif",Typeface.NORMAL)}
+    private fun isDefaultHome(): Boolean = getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_HOME)
+    private fun label(text: String,size: Float=14f,color: Int=textColor): TextView = TextView(this).apply {this.text=text;textSize=size;setTextColor(color);setPadding(0,dp(5),0,dp(5));typeface=if(theme.mono || prefs.getBoolean("mono",false))Typeface.MONOSPACE else Typeface.create(theme.font,Typeface.NORMAL)}
     private fun mono(text: String,size: Float=11f,color: Int=accent)=label(text,size,color).apply {typeface=Typeface.MONOSPACE;letterSpacing=.12f}
-    private fun panel(): LinearLayout = LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(17),dp(13),dp(17),dp(13));background=GradientDrawable().apply {setColor(Color.argb(235,5,12,19));cornerRadius=dp(20).toFloat();setStroke(dp(1),Color.rgb(31,61,72))}}
+    private fun panel(): LinearLayout = LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(17),dp(13),dp(17),dp(13));background=theme.background(this@MainActivity);Themes.tag(this,"panel",theme)}
     private fun add(view: View,parent: LinearLayout=body,weight: Float=0f) {parent.addView(view,LinearLayout.LayoutParams(if(weight>0)0 else -1,if(weight>0)-1 else -2,weight).apply {bottomMargin=dp(10)})}
-    private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=GradientDrawable().apply {setColor(Color.rgb(9,23,30));cornerRadius=dp(12).toFloat();setStroke(dp(1),Color.rgb(30,65,75))};isClickable=true;isFocusable=true;setOnClickListener {action()}}
+    private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
-        page=target;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
+        page=target;drawnTheme=theme.id;Themes.tag(root,"root",theme);column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
         val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
-        header.addView(mono("N / OS",14f),LinearLayout.LayoutParams(0,-2,1f));header.addView(mono(if(isDefaultHome())"LAUNCHER" else "COMPANION",9f,muted));column.addView(header)
+        header.addView(mono(when(theme.id){Themes.TERMINAL->">_ NEON";Themes.CORPORATE->"NEON / INDUSTRIES";else->"N / OS"},14f),LinearLayout.LayoutParams(0,-2,1f));header.addView(mono(if(isDefaultHome())"LAUNCHER" else "COMPANION",9f,muted));column.addView(header)
         val scroll=ScrollView(this).apply {isFillViewport=true;isVerticalScrollBarEnabled=false}
         body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(0,dp(16),0,dp(14))};scroll.addView(body)
         column.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         when(target) {"HOME"->home();"GRID"->grid();"STATUS"->status();else->config()}
         val nav=LinearLayout(this).apply {setPadding(0,dp(8),0,dp(8));gravity=Gravity.CENTER}
-        for(name in listOf("HOME","GRID","STATUS","CONFIG")) {val b=label(name,12f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {show(name)}};nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
+        for(name in listOf("HOME","GRID","ATLAS","STATUS","CONFIG")) {val b=label(name,12f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {if(name=="ATLAS")startActivity(Intent(this@MainActivity,AtlasEntryActivity::class.java))else show(name)};setOnLongClickListener {if(name=="ATLAS"){openAtlas();true}else false};Themes.tag(this,"dock",theme)};nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
     }
     private fun home() {
-        add(mono("PERSONAL TERMINAL   /   01"))
-        clock=label("",64f).apply {typeface=Typeface.create("sans-serif-thin",Typeface.NORMAL);letterSpacing=-.04f};add(clock!!)
+        add(mono(when(theme.id){Themes.TERMINAL->"user@neon:~ / HOME";Themes.CORPORATE->"PERSONNEL / PRIVATE WORKSPACE";else->"PERSONAL TERMINAL   /   01"}))
+        clock=label("",64f).apply {typeface=if(theme.id==Themes.NEON)Typeface.create("sans-serif-thin",Typeface.NORMAL)else Typeface.create(theme.font,Typeface.NORMAL);letterSpacing=if(theme.mono)0f else -.04f;Themes.tag(this,"clock",theme)};add(clock!!)
         date=mono("",12f,muted);add(date!!);updateClock()
-        val badge=panel();badge.addView(mono("CORE ONLINE",11f));badge.addView(label("Seu mundo. Outra frequência.",18f));battery=mono(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",10f,muted);badge.addView(battery);add(badge)
+        val badge=panel();badge.addView(mono(if(theme.mono)"[ SYSTEM / ONLINE ]" else "CORE ONLINE",11f));badge.addView(label(when(theme.id){Themes.TERMINAL->"session.local > ready_";Themes.CORPORATE->"Your time. Company standard.";else->"Seu mundo. Outra frequência."},18f));battery=mono(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",10f,muted);badge.addView(battery);add(badge)
         if(!isDefaultHome()) {add(label("Modo recomendado · HyperOS preservado",12f,muted));add(button("PERSONALIZAR O POCO LAUNCHER") {nativeSetup()})}
+        val atlas=button("ATLAS") {startActivity(Intent(this,AtlasEntryActivity::class.java))}
+        atlas.setOnLongClickListener {openAtlas();true};Themes.tag(atlas,"atlas-home",theme);add(atlas)
         add(mono("QUICK ACCESS",11f))
         val fav=prefs.getStringSet("favorites",emptySet())?:emptySet()
         val chosen=apps.filter {it.key in fav}.ifEmpty {apps.filter {it.component.packageName!=packageName}.take(8)}
@@ -137,7 +142,7 @@ class MainActivity: Activity() {
     }
     private fun grid() {
         add(mono("NEON GRID"));add(label("Aplicativos",32f))
-        val search=EditText(this).apply {hint="Pesquisar aplicativos";setText(query);setTextColor(textColor);setHintTextColor(muted);textSize=16f;setSingleLine(true);inputType=android.text.InputType.TYPE_CLASS_TEXT;contentDescription="Pesquisar aplicativos";setPadding(dp(12),dp(12),dp(12),dp(12))}
+        val search=EditText(this).apply {hint=if(theme.mono)"grep aplicativos..." else "Pesquisar aplicativos";background=theme.background(this@MainActivity,true);Themes.tag(this,"search",theme);setText(query);setTextColor(textColor);setHintTextColor(muted);textSize=16f;setSingleLine(true);inputType=android.text.InputType.TYPE_CLASS_TEXT;contentDescription="Pesquisar aplicativos";setPadding(dp(12),dp(12),dp(12),dp(12))}
         add(search)
         val cats=Spinner(this);val names=arrayOf("Todos","Jogos","Produtividade","Social","Mídia","Outros")
         cats.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
@@ -160,7 +165,7 @@ class MainActivity: Activity() {
             val row=LinearLayout(this)
             for(app in rowEntries) {
                 val tile=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(3),dp(8),dp(3),dp(8));isFocusable=true;contentDescription="Abrir ${app.label}"}
-                val frame=FrameLayout(this).apply {background=GradientDrawable().apply {setColor(Color.rgb(8,18,27));cornerRadius=dp(16).toFloat();setStroke(dp(1),accent)}}
+                val frame=FrameLayout(this).apply {background=theme.background(this@MainActivity,true);Themes.tag(this,"icon-frame",theme)}
                 val icon=ImageView(this).apply {setPadding(dp(11),dp(11),dp(11),dp(11));importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO}
                 frame.addView(icon,FrameLayout.LayoutParams(-1,-1));tile.addView(frame,LinearLayout.LayoutParams(dp(58),dp(58)))
                 val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
@@ -168,9 +173,9 @@ class MainActivity: Activity() {
                 tile.setOnLongClickListener {appMenu(app);true}
                 val key=prefs.getString("iconPack","")+app.key
                 val cached=iconCache.get(key)
-                if(cached!=null)icon.setImageDrawable(cached) else if(!io.isShutdown)io.execute {
+                if(cached!=null){icon.setImageDrawable(cached.constantState?.newDrawable(resources)?.mutate()?:cached);Themes.icon(icon,theme);Themes.tag(icon,"icon",theme)} else if(!io.isShutdown)io.execute {
                     val drawable=packs.icon(prefs.getString("iconPack","")?:"",app)?:repo.icon(app)
-                    handler.post {if(!isDestroyed && drawable!=null){iconCache.put(key,drawable);icon.setImageDrawable(drawable)}}
+                    handler.post {if(!isDestroyed && drawable!=null){iconCache.put(key,drawable);icon.setImageDrawable(drawable.constantState?.newDrawable(resources)?.mutate()?:drawable);Themes.icon(icon,theme);Themes.tag(icon,"icon",theme)}}
                 }
                 row.addView(tile,LinearLayout.LayoutParams(0,-2,1f))
             }
@@ -208,6 +213,10 @@ class MainActivity: Activity() {
     }
     private fun config() {
         add(mono("NEON CONFIG"));add(label("Sua frequência.",32f))
+        add(mono("TEMA ATIVO / ${theme.title}"))
+        for(id in Themes.ids)add(button(Themes.spec(id).title) {Themes.select(this,id);art.themeId=id;art.accent=accent;art.invalidate();show("CONFIG")})
+        add(button("CONFIGURAR ATLAS") {openAtlas()})
+        add(button("WIDGET COMPACTO ATLAS") {if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(ComponentName(this,AtlasWidget::class.java),null,null)else toast("Adicione ATLAS pelo menu Widgets do launcher.")})
         add(button("GUIA NATIVO / PRESERVAR GESTOS") {nativeSetup()})
         add(button("TESTAR COMO LAUNCHER PADRÃO") {
             AlertDialog.Builder(this).setTitle("Compatibilidade HyperOS").setMessage("O HyperOS pode mudar a navegação para botões ao selecionar um launcher externo. Não há correção segura por API pública. Continue apenas para testar. Para preservar os gestos, mantenha o POCO Launcher. Seus ícones e widgets antigos permanecem no launcher original; não são importados automaticamente.")
@@ -245,7 +254,7 @@ class MainActivity: Activity() {
             if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(component,null,null)else toast("No launcher original, mantenha a tela pressionada e abra Widgets → NEON OS.")
         })
         add(button("TEMAS DO HYPEROS") {val launch=packageManager.getLaunchIntentForPackage("com.android.thememanager");if(launch!=null)safeStart(launch)else safeStart(Intent(Settings.ACTION_SETTINGS))})
-        add(label("NEON OS 0.1.1 · sem anúncios, câmera, internet, acessibilidade ou serviço permanente.\nNão modifica apps, SystemUI, AOD ou o mecanismo de bloqueio.",12f,muted))
+        add(label("NEON OS 0.2.0 · sem anúncios, câmera, acessibilidade ou serviço permanente. Rede apenas para funções solicitadas do ATLAS; microfone por acionamento manual.\nNão modifica apps, SystemUI, AOD ou o mecanismo de bloqueio.",12f,muted))
     }
     private fun switch(title:String,key:String,default:Boolean) {
         val control=Switch(this).apply {text=title;setTextColor(textColor);textSize=14f;isChecked=prefs.getBoolean(key,default);setPadding(0,dp(6),0,dp(6));setOnCheckedChangeListener{_,checked->prefs.edit().putBoolean(key,checked).apply();if(key=="highRefresh"||key=="saver")updateRefresh()}};add(control)
@@ -271,7 +280,7 @@ class MainActivity: Activity() {
     }
     private fun applyWallpaper(flags:Int) {
         toast("Gerando wallpaper…")
-        io.execute {var ok=false;try {val image=NeonArt.wallpaper(1220,2712,accent);try{WallpaperManager.getInstance(this).setBitmap(image,null,true,flags);ok=true}finally{image.recycle()}}catch(_:Exception){};handler.post {if(!isDestroyed)toast(if(ok)"Wallpaper aplicado." else "Aplicação bloqueada pelo sistema. Exporte o PNG e aplique pelo app Temas.")}}
+        io.execute {var ok=false;try {val image=NeonArt.wallpaper(1220,2712,accent,theme.id);try{WallpaperManager.getInstance(this).setBitmap(image,null,true,flags);ok=true}finally{image.recycle()}}catch(_:Exception){};handler.post {if(!isDestroyed)toast(if(ok)"Wallpaper aplicado." else "Aplicação bloqueada pelo sistema. Exporte o PNG e aplique pelo app Temas.")}}
     }
     private fun maybeAccess() {
         if(!resumed)return
@@ -329,7 +338,7 @@ class MainActivity: Activity() {
         }
     }
     private fun writeDocument(uri:Uri,request:Int) {
-        io.execute {var ok=false;try {contentResolver.openOutputStream(uri)?.use {stream->if(request==200)stream.write(diagnosticText.toByteArray()) else {val image=NeonArt.wallpaper(1220,2712,accent);try {image.compress(Bitmap.CompressFormat.PNG,100,stream)}finally{image.recycle()}};ok=true}}catch(_:Exception){};handler.post{if(!isDestroyed)toast(if(ok)"Arquivo exportado." else "Não foi possível exportar.")}}
+        io.execute {var ok=false;try {contentResolver.openOutputStream(uri)?.use {stream->if(request==200)stream.write(diagnosticText.toByteArray()) else {val image=NeonArt.wallpaper(1220,2712,accent,theme.id);try {image.compress(Bitmap.CompressFormat.PNG,100,stream)}finally{image.recycle()}};ok=true}}catch(_:Exception){};handler.post{if(!isDestroyed)toast(if(ok)"Arquivo exportado." else "Não foi possível exportar.")}}
     }
     private fun safeStart(intent:Intent) {try{startActivity(intent)}catch(_:Exception){toast("Esta tela não está disponível nesta versão do sistema.")}}
     private fun safeStartForResult(intent:Intent,code:Int) {try{startActivityForResult(intent,code)}catch(_:Exception){if(code==100||code==101)cancelWidget();toast("Ação não disponível no sistema.")}}
