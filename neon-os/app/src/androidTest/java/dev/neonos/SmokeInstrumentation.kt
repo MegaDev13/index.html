@@ -25,8 +25,19 @@ class SmokeInstrumentation: Instrumentation() {
             waitForIdleSync()
             val dir=File(targetContext.getExternalFilesDir(null),"verification").apply{mkdirs()}
             val window=activity.window.decorView
-            fun click(text:String) {runOnMainSync {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.performClick()};waitForIdleSync()}
-            fun screenshot(name:String) {Thread.sleep(350);uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
+            fun unobstructed() {check(uiAutomation.rootInActiveWindow?.packageName?.toString()==targetContext.packageName,"System dialog or foreign window covers NEON")}
+            fun click(text:String) {
+                unobstructed()
+                if(text in setOf("HOME","GRID","STATUS","CONFIG")) {
+                    val pos=IntArray(2)
+                    runOnMainSync {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.getLocationOnScreen(pos);pos[0]+=view.width/2;pos[1]+=view.height/2}
+                    val now=SystemClock.uptimeMillis()
+                    sendPointerSync(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,pos[0].toFloat(),pos[1].toFloat(),0))
+                    sendPointerSync(MotionEvent.obtain(now,now+20,MotionEvent.ACTION_UP,pos[0].toFloat(),pos[1].toFloat(),0))
+                } else runOnMainSync {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.performClick()}
+                waitForIdleSync()
+            }
+            fun screenshot(name:String) {Thread.sleep(350);unobstructed();uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
             Thread.sleep(1300);waitForIdleSync()
             check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER"),"Unexpected permission")
             runOnMainSync {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
@@ -44,7 +55,6 @@ class SmokeInstrumentation: Instrumentation() {
             };click("PRÉVIA DO EFEITO")
             runOnMainSync {(find(window,"Modo instantâneo") as Switch).isChecked=false}
             val measurement=Diagnostics(activity)
-            runOnMainSync {measurement.start()}
             for(effect in 0..4) {
                 runOnMainSync {
                     val view=AccessView(activity).apply {this.effect=effect}
@@ -53,6 +63,16 @@ class SmokeInstrumentation: Instrumentation() {
                 };Thread.sleep(130)
                 uiAutomation.takeScreenshot()?.let {image->File(dir,"effect-${effect+1}.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()};Thread.sleep(250)
             }
+            // Measure a separate pass with no screenshots, shell commands or sampling in the loop.
+            runOnMainSync {measurement.start()}
+            for(effect in 0..4) {
+                runOnMainSync {
+                    val view=AccessView(activity).apply {this.effect=effect}
+                    val holder=window as ViewGroup;holder.addView(view,ViewGroup.LayoutParams(-1,-1));view.play(280)
+                    Handler(Looper.getMainLooper()).postDelayed({holder.removeView(view)},320)
+                };Thread.sleep(420)
+            }
+            unobstructed()
             runOnMainSync {
                 val json=measurement.report();check(json.getLong("pss_kib")>0,"Memory not measured");check(json.getInt("frames")>0,"No frames recorded");File(dir,"profiling-emulator.json").writeText(json.toString(2));measurement.stop()
             }
