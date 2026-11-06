@@ -1,0 +1,99 @@
+name: NEON OS Android
+on:
+  pull_request:
+    paths: ['neon-os/**', '.github/workflows/neon-android.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: neon-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Isolated backend authentication, quotas and API contract tests
+        run: python3 -m unittest discover -s neon-os/backend/tests -v
+      - name: Unit tests, lint and APK compilation
+        working-directory: neon-os
+        run: gradle testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest assembleRelease --console=plain
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android 35 real emulator smoke, images and profiling
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash neon-os/scripts/emulator-test.sh
+      - name: Bundle unsigned build and signing tool
+        if: always()
+        run: |
+          mkdir -p neon-delivery
+          cp neon-os/app/build/outputs/apk/release/*unsigned.apk neon-delivery/NEON-OS-unsigned.apk || true
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" neon-delivery/
+          cp -r neon-os/app/build/test-results neon-delivery/ || true
+          cp -r neon-os/app/build/reports neon-delivery/ || true
+          cp -r neon-os/verification neon-delivery/ || true
+          cp neon-os/docs/* neon-delivery/ || true
+          cp -r neon-os/backend neon-delivery/backend-source
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEON-OS-verification-${{ github.run_number }}
+          path: neon-delivery/
+          retention-days: 90
+  signed-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Compile and sign with permanent private identity
+        env:
+          NEON_KEYSTORE_B64: ${{ secrets.NEON_KEYSTORE_B64 }}
+          NEON_STORE_PASSWORD: ${{ secrets.NEON_STORE_PASSWORD }}
+        run: |
+          test -n "$NEON_KEYSTORE_B64" && test -n "$NEON_STORE_PASSWORD" || { echo 'Permanent signing secrets required; refusing a new signing identity.'; exit 1; }
+          umask 077
+          printf '%s' "$NEON_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/neon.jks"
+          gradle -p neon-os assembleRelease --console=plain
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$RUNNER_TEMP/neon.jks" --ks-key-alias neon --ks-pass env:NEON_STORE_PASSWORD --key-pass env:NEON_STORE_PASSWORD --out NEON-OS.apk neon-os/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs NEON-OS.apk | tee signing-verification.txt
+          python3 neon-os/scripts/verify-certificate.py signing-verification.txt neon-os/signing-certificate.sha256
+          rm "$RUNNER_TEMP/neon.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEON-OS-signed
+          path: |
+            NEON-OS.apk
+            signing-verification.txt

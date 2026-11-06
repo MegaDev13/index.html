@@ -1,0 +1,12 @@
+**/.gradle/
+**/.kotlin/
+**/build/
+**/local.properties
+*.jks
+*.keystore
+signing-private/
+.env
+.env.*
+!.env.example
+*.sqlite3*
+__pycache__/

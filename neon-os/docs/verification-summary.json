@@ -1,0 +1,89 @@
+{
+  "version": "0.3.0",
+  "version_code": 10300,
+  "application_id": "dev.neonos.poco",
+  "code_commit": "e729a76c0d4e47cfeca7b13387008a8a647553dd",
+  "run_url": "https://github.com/MegaDev13/index.html/actions/runs/42140986740",
+  "run_number": 20,
+  "verify_job_id": 127640947003,
+  "artifact_id": 13467283308,
+  "android_assertions": 233,
+  "jvm_tests": 21,
+  "backend_tests": 12,
+  "lint_errors": 0,
+  "lint_warnings": 77,
+  "cold_start_ms": 1746,
+  "weather_note": "O Android consultou o Open-Meteo para Capim Grosso, Bahia, Brasil. A captura mostra 26 °C, com dados do modelo em 2026-11-05 às 22:00 (horário local da cidade).",
+  "v2": {
+    "live_weather_android": true,
+    "swipe_up": true,
+    "icon_inventory_import_restore": true,
+    "wallpaper_formats_preview_save_android": true,
+    "folders_horizontal_gesture_drag": true,
+    "drag_input": "MotionEvents dispatched to the attached Activity",
+    "real_terminal_events": true,
+    "physical_poco": false,
+    "assertions": 61
+  },
+  "features": {
+    "official_chatgpt_installed": false,
+    "official_launch_verified": false,
+    "official_reason": "Official ChatGPT not installed in AVD; no fake package installed",
+    "assistant_role_available": true,
+    "offline_local_action_verified": true,
+    "backend_fixture_verified": true,
+    "live_openai_verified": false,
+    "physical_hyperos_verified": false,
+    "feature_assertions": 140
+  },
+  "process_restart": {
+    "theme": "dark_terminal",
+    "favorites": 2,
+    "process_restart_verified": true
+  },
+  "profiling": {
+    "app": "NEON OS 0.3.0",
+    "device": "Android SDK built for x86_64",
+    "android": "15",
+    "sdk": 35,
+    "build": "sdk_phone64_x86_64-userdebug 15 AE3A.240806.019 12368160 test-keys",
+    "fingerprint": "Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys",
+    "scope": "Processo NEON nesta sessão; não é benchmark do aparelho nem latência biométrica",
+    "session_ms": 2355,
+    "cpu_process_ms": 1319,
+    "cpu_one_core_percent": 56.00849256900212,
+    "pss_kib": 47810,
+    "java_heap_bytes": 3111440,
+    "frames": 39,
+    "mean_frame_ms": 149.00430056410258,
+    "worst_frame_ms": 202.669729,
+    "frames_over_display_budget": 39,
+    "current_hz": 60.000004,
+    "authentication_method": "not_observed"
+  },
+  "apk_sha256": "26ee0dc6906c1bd181ad76ba76f33796dc3b5974621454ef62d789467d91117c",
+  "unsigned_ci_apk_sha256": "de2c2148cc263174613fe0f8a9a0224c62539b0d303e13917aa01bf0f2f07389",
+  "certificate_sha256": "973185c207025f9b01339ce1130c85bd1fa6a22d7f652c786ae84d690874774b",
+  "previous_apk_sha256": "82349f29f64752ea3dcde049e5936ee4b61b960b226cf00e622da6674d5b8adb",
+  "same_certificate_as_0_2_0": true,
+  "artifact_zip_digest": "sha256:f7b0a34e1eb04c03c52862c00fad86d6c70fbea874624a545f371fc16c84304a",
+  "apk_manifest_verification": {
+    "0.2.0": {
+      "versionCode": 10200,
+      "versionName": "0.2.0",
+      "package": "dev.neonos.poco",
+      "minSdkVersion": 33,
+      "targetSdkVersion": 35
+    },
+    "0.3.0": {
+      "versionCode": 10300,
+      "versionName": "0.3.0",
+      "package": "dev.neonos.poco",
+      "minSdkVersion": 33,
+      "targetSdkVersion": 35
+    },
+    "signed_payload_matches_ci_apk": true,
+    "physical_installation_tested": false
+  },
+  "signing_scheme": "APK Signature Scheme v3 verified with apksigner"
+}

@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/widget_bg_neon">
+<TextView android:id="@+id/widget_brand" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="NEON / CORE" android:textColor="#3AF2E4" android:textSize="11sp" android:fontFamily="monospace"/>
+<TextClock android:id="@+id/widget_clock" android:layout_width="match_parent" android:layout_height="wrap_content" android:format12Hour="HH:mm" android:format24Hour="HH:mm" android:textColor="#E9F2FA" android:textSize="42sp" android:fontFamily="sans-serif-light"/>
+<TextClock android:id="@+id/widget_date" android:layout_width="match_parent" android:layout_height="wrap_content" android:format12Hour="EEE, dd MMM" android:format24Hour="EEE, dd MMM" android:textColor="#99ABBE" android:textSize="12sp" android:fontFamily="sans-serif-light"/>
+</LinearLayout>

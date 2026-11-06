@@ -1,0 +1,10 @@
+Português do Brasil — lista de palavras offline do Teclado NEON
+
+Fonte: Hermit Dave, FrequencyWords, pt_br_50k.txt (OpenSubtitles 2018).
+Commit de origem: 525f9b560de45753a5ea01069454e72e9aa541c6.
+https://github.com/hermitdave/FrequencyWords/blob/525f9b560de45753a5ea01069454e72e9aa541c6/content/2018/pt_br/pt_br_50k.txt
+
+Adaptação: remoção das contagens, normalização NFC, filtro de palavras
+alfabéticas de 2 a 24 caracteres e recorte de 12 mil entradas na ordem original.
+Este arquivo de dados é disponibilizado em CC BY-SA 4.0.
+https://creativecommons.org/licenses/by-sa/4.0/

@@ -1,0 +1,152 @@
+package dev.neonos
+
+import android.animation.ValueAnimator
+import android.content.Context
+import android.graphics.*
+import android.view.View
+import kotlin.math.*
+
+object NeonArt {
+    fun wallpaper(width: Int, height: Int, accent: Int, themeId: String=Themes.NEON): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        draw(Canvas(bitmap), width.toFloat(), height.toFloat(), accent,themeId)
+        return bitmap
+    }
+    fun draw(c: Canvas, w: Float, h: Float, accent: Int,themeId:String=Themes.NEON) {
+        if(themeId!=Themes.NEON) {drawAlternate(c,w,h,Themes.spec(themeId));return}
+        c.drawColor(Color.BLACK)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = RadialGradient(w*.55f,h*.54f,w*.7f,intArrayOf(Color.rgb(9,28,37),Color.BLACK),null,Shader.TileMode.CLAMP)
+        c.drawRect(0f,0f,w,h,p); p.shader=null
+        val scale = w/400f
+        c.save(); c.scale(scale,scale)
+        val hh=h/scale; val cy=hh*.53f
+        p.style=Paint.Style.STROKE; p.strokeWidth=.7f; p.color=Color.rgb(14,29,36)
+        for(i in 0..12) { c.drawLine(i*40f,0f,i*40f,hh,p) }
+        for(i in 0..(hh/40).toInt()) c.drawLine(0f,i*40f,400f,i*40f,p)
+        p.strokeWidth=1.1f; p.color=accent; p.alpha=100
+        c.drawCircle(210f,cy,138f,p); c.drawCircle(210f,cy,132f,p)
+        p.color=Color.rgb(164,79,255); p.alpha=110; p.strokeWidth=3f
+        c.drawArc(63f,cy-147f,357f,cy+147f,205f,84f,false,p)
+        p.color=accent;p.alpha=220;p.strokeWidth=2.5f
+        c.drawArc(72f,cy-138f,348f,cy+138f,-48f,105f,false,p)
+        for(i in 0..42) { val a=i*2*PI/43; val r=144f; p.alpha=if(i%5==0)180 else 45; c.drawLine(210f+cos(a).toFloat()*r,cy+sin(a).toFloat()*r,210f+cos(a).toFloat()*(r+if(i%5==0)10 else 4),cy+sin(a).toFloat()*(r+if(i%5==0)10 else 4),p) }
+        p.alpha=140;p.strokeWidth=1f
+        for(i in 0..5) {
+            val x=80f+i*44; val path=Path();path.moveTo(x,cy+120);path.lineTo(x,cy+170+i*7);path.lineTo(x-30,cy+200+i*7);path.lineTo(x-30,hh-25);c.drawPath(path,p)
+        }
+        p.style=Paint.Style.FILL;p.alpha=255;p.color=accent;p.typeface=Typeface.MONOSPACE;p.textSize=9f
+        c.drawText("N E O N   /   C O R E",26f,hh-32,p)
+        p.color=Color.rgb(208,44,131);c.drawRect(350f,42f,374f,45f,p)
+        p.color=Color.rgb(47,78,88);p.textSize=7f;c.drawText("PERSONAL TERMINAL  //  01",26f,48f,p)
+        c.restore()
+    }
+    private fun drawAlternate(c:Canvas,w:Float,h:Float,t:ThemeSpec) {
+        c.drawColor(Color.BLACK)
+        val p=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=t.stroke;strokeWidth=1f}
+        val unit=w/400f
+        c.drawLine(24*unit,0f,24*unit,h,p);c.drawLine(w-24*unit,0f,w-24*unit,h,p)
+        for(i in 1..4)c.drawLine(0f,h*i/5,w,h*i/5,p)
+        p.color=t.secondary;p.typeface=Typeface.MONOSPACE;p.textSize=8*unit
+        c.drawText(if(t.id==Themes.TERMINAL)"SYS://NEON  >_" else "PERSONNEL SYSTEMS / 01",30*unit,48*unit,p)
+        c.drawText(if(t.id==Themes.TERMINAL)"[ LOCAL NODE / READY ]" else "AUTHORIZED PERSONAL TERMINAL",30*unit,h-32*unit,p)
+        if(t.id==Themes.CORPORATE) {p.color=t.accent;c.drawRect(w-50*unit,70*unit,w-30*unit,74*unit,p)}
+    }
+
+}
+class ArtView(context: Context, var accent: Int): View(context) {
+    var themeId=Themes.current(context).id
+    var hudMode=false
+    var systemWallpaper=false
+    var wallpaperImage:Bitmap?=null
+    private val wallpaperPaint=Paint(Paint.FILTER_BITMAP_FLAG)
+    override fun onDraw(canvas:Canvas){
+        if(systemWallpaper){canvas.drawColor(Color.argb(80,0,0,0));return}
+        val image=wallpaperImage
+        if(image!=null){
+            val scale=maxOf(width.toFloat()/image.width,height.toFloat()/image.height)
+            val x=(width-image.width*scale)/2
+            val y=(height-image.height*scale)/2
+            canvas.drawBitmap(image,null,RectF(x,y,x+image.width*scale,y+image.height*scale),wallpaperPaint)
+        }else if(hudMode)canvas.drawColor(Color.BLACK)
+        else NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent,themeId)
+    }
+}
+class AccessView(context: Context): View(context) {
+    var accent=Color.CYAN; var effect=2; var intensity=.65f; var luminance=.8f
+    private var progress=1f
+    var lockBackdrop: Bitmap? = null
+    private val backdropPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val backdropBounds = RectF()
+    private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
+    private var animation: ValueAnimator?=null
+    init { importantForAccessibility=IMPORTANT_FOR_ACCESSIBILITY_NO; isClickable=false; isFocusable=false }
+    fun play(duration: Long) {
+        stop(); if(duration==0L)return
+        animation=ValueAnimator.ofFloat(0f,1f).apply {
+            this.duration=duration
+            addUpdateListener { progress=it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+    fun stop() { animation?.cancel(); animation=null;progress=1f;invalidate() }
+    override fun onDetachedFromWindow() { stop();super.onDetachedFromWindow() }
+    override fun onDraw(c: Canvas) {
+        if(progress>=1f)return
+        val w=width.toFloat();val h=height.toFloat();val t=progress
+        lockBackdrop?.let { bitmap ->
+            val scale = maxOf(w/bitmap.width, h/bitmap.height)
+            val dw = bitmap.width*scale
+            val dh = bitmap.height*scale
+            backdropBounds.set((w-dw)/2f,(h-dh)/2f,(w+dw)/2f,(h+dh)/2f)
+            backdropPaint.alpha = ((1f-t)*255f).toInt()
+            c.drawBitmap(bitmap,null,backdropBounds,backdropPaint)
+        }
+        paint.color=accent;paint.alpha=((1-t)*190*luminance*(.35f+.65f*intensity)).toInt();paint.style=Paint.Style.STROKE;paint.strokeWidth=(1+intensity*2)*resources.displayMetrics.density
+        when(effect) {
+            0 -> for(i in 0..11) { val x=w*(i+1)/13; val yy=h*(.25f+(i%4)*.15f);c.drawLine(w*.5f,h*.5f,x,yy,paint);c.drawCircle(x,yy,3f+t*12,paint) }
+            1 -> for(i in 0..7) { val yy=h*(i+.5f)/8;c.drawLine(w*((i%3)*.1f)*t,yy,w*(.6f+t*.4f),yy,paint) }
+            2 -> for(i in 0..2)c.drawCircle(w*.5f,h*.57f,(t*w*.8f+i*w*.13f)*(0.5f+intensity*.5f),paint)
+            3 -> {paint.style=Paint.Style.FILL;paint.typeface=Typeface.MONOSPACE;paint.textSize=16*resources.displayMetrics.scaledDensity;for(i in 0..8)for(j in 0..8)c.drawText(if((i+j)%2==0)"01" else "//",w*i/9,h*((j+t)/9),paint)}
+            5 -> {
+                val r = min(w, h) * .145f
+                val x = w/2f
+                val y = h/2f
+                c.drawRoundRect(x-r,y-r*.1f,x+r,y+r*1.05f,r*.2f,r*.2f,paint)
+                c.save()
+                c.rotate(-65f*t,x-r*.59f,y)
+                c.drawArc(x-r*.59f,y-r*1.02f,x+r*.59f,y+r*.15f,180f,180f,false,paint)
+                c.drawLine(x-r*.59f,y-r*.43f,x-r*.59f,y,paint)
+                c.drawLine(x+r*.59f,y-r*.43f,x+r*.59f,y-r*.14f,paint)
+                c.restore()
+                c.drawCircle(x,y+r*.39f,r*.13f,paint)
+                c.drawLine(x,y+r*.52f,x,y+r*.72f,paint)
+            }
+            6 -> {
+                val r = min(w, h) * .26f
+                val x = w/2f
+                val y = h/2f
+                c.drawCircle(x,y,r,paint)
+                c.drawCircle(x,y,r*.41f,paint)
+                c.drawCircle(x,y,r*.14f,paint)
+                for (i in 0..3) c.drawArc(x-r*1.12f,y-r*1.12f,x+r*1.12f,y+r*1.12f,i*90f+t*220f,48f,false,paint)
+                val dy = (t*2f-1f)*r
+                val half = sqrt((r*r-dy*dy).coerceAtLeast(0f))
+                c.drawLine(x-half,y+dy,x+half,y+dy,paint)
+            }
+            7 -> {
+                val x = w/2f
+                val y = h/2f
+                for (i in 1..7) {
+                    val r = w*(.035f*i + .07f*t)
+                    c.drawArc(x-r,y-r*1.35f,x+r,y+r*1.35f,22f+i*11f,280f-i*8f,false,paint)
+                }
+                val scanY = h*t
+                c.drawLine(0f,scanY,w,scanY,paint)
+                paint.alpha = (paint.alpha*.32f).toInt()
+                for (i in 1..7) c.drawLine(w*i/8f,0f,w*i/8f,h,paint)
+            }
+            else -> { c.save(); c.translate(w*.5f,h*.5f);c.rotate(t*55);for(i in 0..3) {val r=w*(.12f+t*.6f+i*.06f);c.drawRect(-r,-r,r,r,paint)};c.restore() }
+        }
+    }
+}
