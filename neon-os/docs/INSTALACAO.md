@@ -23,7 +23,7 @@ A tela de bloqueio, o reconhecimento facial, a digital, o PIN, as notificações
 2. Faça login e use sua conta dentro do próprio aplicativo oficial.
 3. Toque no botão ATLAS da Home, dock ou widget. No modo padrão, ele abre o aplicativo oficial pelo mecanismo público de abertura do Android. Se não estiver instalado, o painel oferece orientação e o link da loja.
 4. Pressione prolongadamente ATLAS na Home/dock para abrir o painel NEON com comandos locais e configuração. No widget, use **PAINEL**. Toque em **CONFIGURAR ATLAS** na configuração para selecionar os modos.
-5. Quando disponível em sua versão do ChatGPT, ative **Configurações → Voz → Começar com voz**. Esse ajuste é realizado pelo usuário no aplicativo oficial; o NEON não consegue forçar esse modo ou controlar suas conversas.
+5. Nas versões compatíveis do ChatGPT, ative **Configurações → Voz → Iniciar no Modo Voz**. O ajuste inicia a voz quando o ChatGPT abre em uma conversa nova ou vazia. [Guia oficial do Modo Voz](https://help.openai.com/pt-br/articles/20001274-chatgpt-voice)
 
 O painel integrado não acessa a sessão, o histórico ou a memória da sua conta ChatGPT. A assinatura ChatGPT e o uso da API são serviços separados.
 

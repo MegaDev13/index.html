@@ -225,16 +225,24 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         Thread.sleep(400)
         val source = Rect()
         val target = Rect()
-        main {
-            val first = find(home.window.decorView) { it.contentDescription == "Abrir ${selected[0].label}" }!!
-            val last = find(home.window.decorView) { it.contentDescription == "Abrir ${selected[2].label}" }!!
-            check(first.getGlobalVisibleRect(source) && last.getGlobalVisibleRect(target), "Drag targets invisible")
-        }
+        val dragDeadline = SystemClock.elapsedRealtime() + 8000
+        var ready: Boolean
+        do {
+            ready = false
+            main {
+                val first = find(home.window.decorView) { it.contentDescription == "Abrir ${selected[0].label}" }
+                val last = find(home.window.decorView) { it.contentDescription == "Abrir ${selected[2].label}" }
+                ready = home.hasWindowFocus() && first != null && last != null &&
+                    first.getGlobalVisibleRect(source) && last.getGlobalVisibleRect(target) && source != target
+            }
+            if (!ready) Thread.sleep(100)
+        } while (!ready && SystemClock.elapsedRealtime() < dragDeadline)
+        check(ready, "Drag targets are not distinct and visible")
         swipe(source.centerX().toFloat(), source.centerY().toFloat(),
             (target.centerX()-source.centerX()).toFloat(), (target.centerY()-source.centerY()).toFloat(),
             ViewConfiguration.getLongPressTimeout().toLong() + 400)
         check(HomeLayout(context).page(1) == listOf(selected[1].key, selected[0].key, selected[2].key),
-            "Drag did not persist item order: ${layout.page(1)}")
+            "Drag did not persist item order: ${layout.page(1)} from $source to $target")
         shot("v2-drag-page")
         evidence.put("folders_horizontal_gesture_drag", true)
         prefs.edit().putBoolean("home_edit", false).putString("home_layout", savedLayout).commit()

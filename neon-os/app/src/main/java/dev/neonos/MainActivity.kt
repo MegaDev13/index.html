@@ -42,7 +42,8 @@ class MainActivity: Activity() {
     private var wallpaperKey=""
     private data class AppDrag(val key: String, val tile: View)
     private var appDrag: AppDrag? = null
-    private var pointerDown = false
+    private var dragCandidate: AppDrag? = null
+    private val dragSources = linkedMapOf<View, String>()
     private val dropTargets = linkedMapOf<View, (String) -> Unit>()
     private var touchX=0f
     private var touchY=0f
@@ -154,7 +155,7 @@ class MainActivity: Activity() {
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
     override fun onResume() {super.onResume();if(drawnTheme!=theme.id||uiSettingsHash!=prefs.all.hashCode())show(page);updateRefresh();resumed=true;EventJournal.record("LAUNCHER","Ativo");networkChanged();updateClock();hud?.updateBattery(batteryLevel,plugged);handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
-    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;pointerDown=false;clearAppDrag();handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
+    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;clearAppDrag();handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
     override fun onStop() {TerminalWidget.refresh(this);getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;weatherWorker.shutdownNow();io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
@@ -170,6 +171,7 @@ class MainActivity: Activity() {
     private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
         clearAppDrag()
+        dragSources.clear()
         dropTargets.clear()
         val animate=page!=target||lastHomePage!=homePage
         lastHomePage=homePage;gridSearch=null;uiSettingsHash=prefs.all.hashCode();hud?.stopMotion();hud=null;page=target;art.hudMode=target=="HOME";drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
@@ -322,6 +324,7 @@ class MainActivity: Activity() {
             isPressed = false
         }
         appDrag = null
+        dragCandidate = null
     }
 
     private fun handleAppDrag(event: MotionEvent, drag: AppDrag): Boolean {
@@ -332,10 +335,9 @@ class MainActivity: Activity() {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
                 val target = if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    dropTargets.entries.firstOrNull { (view, _) -> view !== drag.tile && inside(view, event.x, event.y) }
+                    dropTargets.entries.firstOrNull { (view, _) -> view !== drag.tile && inside(view, event.rawX, event.rawY) }
                 } else null
                 clearAppDrag()
-                pointerDown = false
                 val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
                 try { super.dispatchTouchEvent(cancel) } finally { cancel.recycle() }
                 target?.value?.invoke(drag.key)
@@ -348,11 +350,28 @@ class MainActivity: Activity() {
         appDrag?.let { return handleAppDrag(event, it) }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pointerDown = true
                 touchX = event.x
                 touchY = event.y
+                dragCandidate = dragSources.entries.firstOrNull { (view, _) ->
+                    inside(view, event.rawX, event.rawY)
+                }?.let { (view, key) -> AppDrag(key, view) }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> pointerDown = false
+            MotionEvent.ACTION_MOVE -> {
+                val candidate = dragCandidate
+                if (candidate != null && candidate.tile.isAttachedToWindow) {
+                    val slop = ViewConfiguration.get(this).scaledTouchSlop
+                    if (abs(event.x - touchX) > slop || abs(event.y - touchY) > slop) {
+                        dragCandidate = null
+                        if (event.eventTime - event.downTime >= ViewConfiguration.getLongPressTimeout()) {
+                            appDrag = candidate
+                            candidate.tile.alpha = .65f
+                            candidate.tile.translationZ = dp(8).toFloat()
+                            return handleAppDrag(event, candidate)
+                        }
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> dragCandidate = null
         }
         if(page!="HOME"||prefs.getBoolean("home_edit",false))return super.dispatchTouchEvent(event)
         if(event.actionMasked==MotionEvent.ACTION_DOWN){
@@ -530,6 +549,7 @@ class MainActivity: Activity() {
     private fun renderGrid() {
         val container=gridBody?:return
         clearAppDrag()
+        dragSources.clear()
         dropTargets.clear()
         container.removeAllViews()
         val hidden=prefs.getStringSet("hidden_apps",emptySet()).orEmpty()
@@ -558,13 +578,10 @@ class MainActivity: Activity() {
                 val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
                 tile.setOnClickListener {launchApp(app)}
                 tile.setOnLongClickListener {
-                    if (draggable && pointerDown) {
-                        appDrag = AppDrag(app.key, tile)
-                        tile.alpha = .65f
-                        tile.translationZ = dp(8).toFloat()
-                    } else appMenu(app)
+                    if (dragCandidate?.tile !== tile) appMenu(app)
                     true
                 }
+                if (draggable) dragSources[tile] = app.key
                 if (draggable) dropTargets[tile] = { key ->
                     if (page == "HOME") {
                         homeLayout.move(key, homePage, app.key)
