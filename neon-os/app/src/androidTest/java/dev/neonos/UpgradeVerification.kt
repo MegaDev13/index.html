@@ -418,8 +418,10 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         check(!queryBridge("invalid","android").getBoolean("ok"), "Bridge accepted a wrong key")
         check(!queryBridge(bridgeToken,"shell").getBoolean("ok"), "Bridge accepted an unsupported tool")
         main { bridge.finish() }
-        Thread.sleep(500)
-        check(runCatching { java.net.Socket("127.0.0.1",38223).close() }.isFailure, "Bridge did not stop on exit")
+        fun bridgePortClosed() = runCatching { java.net.Socket("127.0.0.1", 38223).close() }.isFailure
+        val closeDeadline = SystemClock.elapsedRealtime() + 4000
+        while (!bridgePortClosed() && SystemClock.elapsedRealtime() < closeDeadline) Thread.sleep(100)
+        check(bridgePortClosed(), "Bridge did not stop on exit")
         evidence.put("launcher_bridge_authenticated_and_stops", true)
 
         val keyboardSettings = open(KeyboardConfigActivity::class.java)

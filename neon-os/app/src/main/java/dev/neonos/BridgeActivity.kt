@@ -85,16 +85,16 @@ class BridgeActivity : NeonPanel() {
         status.text = "Sessão parada."
     }
 
-    override fun onStop() {
+    override fun onPause() {
         stopBridge()
-        super.onStop()
+        super.onPause()
     }
 }
 
 private class LocalBridge(private val dataPath: String) {
     val token: String = Base64.encodeToString(ByteArray(24).apply { SecureRandom().nextBytes(this) },
         Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-    private val server = ServerSocket()
+    private val server = ServerSocket().apply { reuseAddress = true }
     @Volatile private var client: Socket? = null
 
     fun serve(ready: () -> Unit) {

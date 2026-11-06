@@ -28,6 +28,7 @@ import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -424,6 +425,7 @@ class NeonKeyboard : InputMethodService() {
     }
 
     private fun bindRepeat(button: CyberKey) {
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
         var repeated = false
         val pulse = object : Runnable {
             override fun run() {
@@ -443,10 +445,18 @@ class NeonKeyboard : InputMethodService() {
                     button.flash()
                     ui.postDelayed(pulse, 340)
                 }
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.x < -slop || event.x > button.width + slop ||
+                        event.y < -slop || event.y > button.height + slop) {
+                        stopRepeat()
+                        button.isPressed = false
+                    }
+                }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasPressed = button.isPressed
                     stopRepeat()
                     button.isPressed = false
-                    if (event.actionMasked == MotionEvent.ACTION_UP && !repeated) button.performClick()
+                    if (event.actionMasked == MotionEvent.ACTION_UP && wasPressed && !repeated) button.performClick()
                 }
             }
             true

@@ -191,6 +191,25 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         tapKeyboard(.063f, 174f)
         tapKeyboard(.25f, 71f)
         checkEditor("e", "Shift did not exit Caps Lock", true)
+        repeat(8) {
+            tapKeyboard(.25f, 71f)
+            Thread.sleep(40)
+        }
+        checkEditor("eeeeeeee", "Keyboard dropped letters during rapid typing")
+        val backspace = keyboardPoint(.934f, 174f)
+        val deleteDown = SystemClock.uptimeMillis()
+        keyboardEvent(deleteDown, MotionEvent.ACTION_DOWN, backspace)
+        Thread.sleep(570)
+        keyboardEvent(deleteDown, MotionEvent.ACTION_UP, backspace)
+        Thread.sleep(140)
+        var afterDelete = ""
+        main {
+            val editor = find(atlas.window.decorView) { it is EditText } as EditText
+            afterDelete = editor.text.toString()
+        }
+        check(afterDelete.length <= 6, "Holding Backspace did not delete repeatedly")
+        checkEditor(afterDelete, "Backspace kept deleting after release", true)
+        evidence.put("keyboard_backspace_hold_repeat", true)
         tapKeyboard(.155f, 224f)
         screenshot("v033-keyboard-toolbar")
         tapKeyboard(.39f, 30f)
