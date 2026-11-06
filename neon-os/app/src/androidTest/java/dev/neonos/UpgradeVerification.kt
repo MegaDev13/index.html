@@ -49,15 +49,25 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         check(image != null, "Screenshot unavailable")
         image!!.let { File(directory, "$name.png").outputStream().use { stream -> it.compress(Bitmap.CompressFormat.PNG, 100, stream) }; it.recycle() }
     }
-    private fun swipe(x: Float, y: Float, dx: Float, dy: Float, hold: Long = 0) {
+    private fun swipe(x: Float, y: Float, dx: Float, dy: Float, hold: Long = 0, window: Activity? = null) {
         val down = SystemClock.uptimeMillis()
-        test.sendPointerSync(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0))
+        fun send(action: Int, px: Float, py: Float) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, px, py, 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            try {
+                if (window == null) test.sendPointerSync(event)
+                else main { window.dispatchTouchEvent(event) }
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, x, y)
         Thread.sleep(hold)
         for (step in 1..10) {
-            test.sendPointerSync(MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x + dx*step/10, y + dy*step/10, 0))
+            send(MotionEvent.ACTION_MOVE, x + dx*step/10, y + dy*step/10)
             Thread.sleep(30)
         }
-        test.sendPointerSync(MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x+dx, y+dy, 0))
+        send(MotionEvent.ACTION_UP, x+dx, y+dy)
         Thread.sleep(650)
         test.waitForIdleSync()
     }
@@ -232,7 +242,7 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
             main {
                 val first = find(home.window.decorView) { it.contentDescription == "Abrir ${selected[0].label}" }
                 val last = find(home.window.decorView) { it.contentDescription == "Abrir ${selected[2].label}" }
-                ready = home.hasWindowFocus() && first != null && last != null &&
+                ready = first?.isAttachedToWindow == true && last?.isAttachedToWindow == true &&
                     first.getGlobalVisibleRect(source) && last.getGlobalVisibleRect(target) && source != target
             }
             if (!ready) Thread.sleep(100)
@@ -240,11 +250,11 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         check(ready, "Drag targets are not distinct and visible")
         swipe(source.centerX().toFloat(), source.centerY().toFloat(),
             (target.centerX()-source.centerX()).toFloat(), (target.centerY()-source.centerY()).toFloat(),
-            ViewConfiguration.getLongPressTimeout().toLong() + 400)
+            ViewConfiguration.getLongPressTimeout().toLong() + 400, home)
         check(HomeLayout(context).page(1) == listOf(selected[1].key, selected[0].key, selected[2].key),
             "Drag did not persist item order: ${layout.page(1)} from $source to $target")
         shot("v2-drag-page")
-        evidence.put("folders_horizontal_gesture_drag", true)
+        evidence.put("folders_horizontal_gesture_drag", true).put("drag_input", "MotionEvents dispatched to the attached Activity")
         prefs.edit().putBoolean("home_edit", false).putString("home_layout", savedLayout).commit()
 
         val terminal = open(TerminalActivity::class.java) as TerminalActivity
