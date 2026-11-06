@@ -9,6 +9,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
@@ -31,7 +32,23 @@ class NeonKeyboard : InputMethodService() {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(3), dp(6), dp(3), dp(6))
         keys = this
+        setOnApplyWindowInsetsListener { _, insets ->
+            keepNavigationClear(insets)
+            insets
+        }
+        post { rootWindowInsets?.let(::keepNavigationClear) }
         render()
+    }
+
+    private fun keepNavigationClear(insets: WindowInsets) {
+        val types = WindowInsets.Type.navigationBars() or WindowInsets.Type.displayCutout()
+        val safe = (keys.rootWindowInsets ?: insets).getInsetsIgnoringVisibility(types)
+        val left = dp(3) + safe.left
+        val right = dp(3) + safe.right
+        val bottom = dp(6) + safe.bottom
+        if (keys.paddingLeft != left || keys.paddingRight != right || keys.paddingBottom != bottom) {
+            keys.setPadding(left, dp(6), right, bottom)
+        }
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {

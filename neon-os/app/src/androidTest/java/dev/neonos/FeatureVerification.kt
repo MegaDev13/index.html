@@ -128,15 +128,16 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
             key = letterA()
         }
         screenshot("atlas-keyboard")
-        val tapped = key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true
-        if (!tapped) {
-            // Some emulator images withhold the IME accessibility tree during input.
+        fun tapKeyboard(fractionX: Float, yDp: Float) {
             val coords = FloatArray(2)
             main {
                 val decor = atlas.window.decorView
+                val insets = decor.rootWindowInsets
                 val density = atlas.resources.displayMetrics.density
-                coords[0] = decor.width / 18f
-                coords[1] = decor.height - decor.rootWindowInsets.getInsets(WindowInsets.Type.ime()).bottom + 83f * density
+                coords[0] = decor.width * fractionX
+                coords[1] = decor.height - insets.getInsets(WindowInsets.Type.ime()).bottom + yDp * density
+                check(coords[1] < decor.height - insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
+                    "Keyboard key overlaps Android navigation bar")
             }
             val whenDown = SystemClock.uptimeMillis()
             for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
@@ -146,11 +147,14 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
                 finally { event.recycle() }
             }
         }
-        Thread.sleep(250)
+        if (key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) != true) tapKeyboard(1/18f, 83f)
+        Thread.sleep(220)
+        tapKeyboard(.53f, 184f)
+        Thread.sleep(220)
         test.waitForIdleSync()
         main {
             val editor = find(atlas.window.decorView) { it is EditText } as EditText
-            check(editor.text.toString() == "a", "NEON IME did not deliver text to editor")
+            check(editor.text.toString() == "a ", "NEON IME did not deliver letter and space")
             editor.setText("")
         }
         main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}
