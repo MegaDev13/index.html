@@ -1043,6 +1043,7 @@ class MainActivity: Activity() {
         add(button("NEON ICON STUDIO"){safeStart(Intent(this,IconStudioActivity::class.java))})
         add(button("HUD / CLIMA"){hudRoute("weather")})
         add(button("TERMINAL / EVENTOS REAIS"){hudRoute("terminal")})
+        add(button("NEON BRIDGE / MCP E SHELL") { safeStart(Intent(this, BridgeActivity::class.java)) })
         add(button("ATIVAR TECLADO NEON") { safeStart(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) })
         add(button("ESCOLHER TECLADO") { getSystemService(android.view.inputmethod.InputMethodManager::class.java).showInputMethodPicker() })
         add(button("CONFIGURAR ATLAS") {openAtlas()})

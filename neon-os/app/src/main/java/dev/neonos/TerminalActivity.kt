@@ -15,7 +15,7 @@ import android.widget.TextView
 import java.util.Locale
 import kotlin.math.roundToInt
 
-enum class TerminalCommand { HELP, STATUS, BATTERY, STORAGE, APPS, DARK, NEON, CORPORATE, WALLPAPER, ATLAS, CLEAR, OPEN, VOLUME, MUTE, UNMUTE, BRIGHTNESS, UNKNOWN }
+enum class TerminalCommand { HELP, STATUS, BATTERY, STORAGE, APPS, DARK, NEON, CORPORATE, WALLPAPER, ATLAS, BRIDGE, CLEAR, OPEN, VOLUME, MUTE, UNMUTE, BRIGHTNESS, UNKNOWN }
 
 object TerminalParser {
     fun parse(input: String): TerminalCommand = when (input.trim().lowercase(Locale.ROOT)) {
@@ -29,6 +29,7 @@ object TerminalParser {
         "theme corporate" -> TerminalCommand.CORPORATE
         "wallpaper" -> TerminalCommand.WALLPAPER
         "atlas" -> TerminalCommand.ATLAS
+        "bridge" -> TerminalCommand.BRIDGE
         "clear" -> TerminalCommand.CLEAR
         else -> when (LocalTools.normalize(input.trim().substringBefore(' '))) {
             "open", "abrir" -> if (argument(input).isBlank()) TerminalCommand.UNKNOWN else TerminalCommand.OPEN
@@ -85,7 +86,7 @@ class TerminalActivity : NeonPanel() {
         val command = TerminalParser.parse(input)
         if (command !in setOf(TerminalCommand.UNKNOWN, TerminalCommand.CLEAR)) EventJournal.record("TERMINAL", command.name)
         result.text = when (command) {
-            TerminalCommand.HELP -> "open <app> · volume [0–100] · silenciar · dessilenciar\nbrilho [1–100 | auto | sistema]\nstatus · battery · storage · apps · theme dark/neon/corporate · wallpaper · atlas · clear"
+            TerminalCommand.HELP -> "open <app> · volume [0–100] · silenciar · dessilenciar\nbrilho [1–100 | auto | sistema]\nstatus · battery · storage · apps · theme dark/neon/corporate · wallpaper · atlas · bridge · clear"
             TerminalCommand.STATUS -> "NEON ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} · ${if (AtlasApi(this).connected()) "Rede disponível" else "Offline"}"
             TerminalCommand.BATTERY -> battery()
             TerminalCommand.STORAGE -> "Dados: %.1f GiB livres".format(StatFs(filesDir.path).availableBytes / 1073741824.0)
@@ -101,6 +102,7 @@ class TerminalActivity : NeonPanel() {
             TerminalCommand.WALLPAPER -> {
                 startActivity(Intent(this,WallpaperActivity::class.java)); "Seletor de wallpapers aberto."
             }
+            TerminalCommand.BRIDGE -> { startActivity(Intent(this, BridgeActivity::class.java)); "NEON Bridge aberto." }
             TerminalCommand.ATLAS -> { startActivity(Intent(this, AtlasEntryActivity::class.java)); "ATLAS acionado." }
             TerminalCommand.CLEAR -> { EventJournal.clear(); "Registros apagados." }
             TerminalCommand.OPEN -> {

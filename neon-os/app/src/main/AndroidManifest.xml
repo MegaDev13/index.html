@@ -9,6 +9,7 @@
     <queries>
         <intent><action android:name="android.service.wallpaper.WallpaperService"/></intent>
         <package android:name="com.openai.chatgpt"/>
+        <package android:name="com.termux"/>
         <intent><action android:name="android.speech.RecognitionService"/></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>
         <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
@@ -34,6 +35,7 @@
             <intent-filter><action android:name="android.view.InputMethod"/></intent-filter>
             <meta-data android:name="android.view.im" android:resource="@xml/neon_keyboard"/>
         </service>
+        <activity android:name=".BridgeActivity" android:exported="false"/>
         <activity android:name=".TerminalActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasEntryActivity" android:exported="true">

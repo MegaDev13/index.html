@@ -1,5 +1,7 @@
 """MCP stdio bridge for bounded, read-only Termux diagnostics over SSH."""
 import json
+import os
+import socket
 import subprocess
 import sys
 
@@ -12,7 +14,7 @@ COMMANDS = {
 PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 TOOL = {
     "name": "neon_diagnostic",
-    "description": "Consulta somente leitura no Termux conectado por SSH.",
+    "description": "Consulta somente leitura no NEON por USB ou no Termux por SSH.",
     "inputSchema": {
         "type": "object",
         "properties": {"check": {"type": "string", "enum": list(COMMANDS)}},
@@ -23,9 +25,30 @@ TOOL = {
 }
 
 
+def launcher_diagnostic(check):
+    token = os.environ.get("NEON_BRIDGE_TOKEN", "")
+    if not token or len(token) > 64:
+        raise ValueError("Missing session key")
+    with socket.create_connection(("127.0.0.1", 38223), timeout=4) as connection:
+        connection.sendall((json.dumps({"token": token, "check": check}) + "\n").encode())
+        with connection.makefile("rb") as stream:
+            raw = stream.readline(4097)
+        if not raw.endswith(b"\n") or len(raw) > 4096:
+            raise ValueError("Invalid response")
+        response = json.loads(raw)
+        if response.get("ok") is not True or not isinstance(response.get("value"), str):
+            raise ValueError("Launcher rejected the query")
+        return response["value"]
+
+
 def diagnostic(name):
     if not isinstance(name, str) or name not in COMMANDS:
         return {"isError": True, "content": [{"type": "text", "text": "Diagnóstico fora da lista permitida."}]}
+    if "--launcher" in sys.argv:
+        try:
+            return {"content": [{"type": "text", "text": launcher_diagnostic(name)}]}
+        except (OSError, ValueError, AttributeError):
+            return {"isError": True, "content": [{"type": "text", "text": "Sessão local indisponível. Confira o encaminhamento ADB e a chave temporária."}]}
     command = [
         "ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
         "-o", "ConnectTimeout=4", "neon-bridge", COMMANDS[name],
@@ -58,7 +81,7 @@ def reply(request):
         answer["result"] = {
             "protocolVersion": version,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "neon-bridge", "version": "0.3.2"},
+            "serverInfo": {"name": "neon-bridge", "version": "0.3.3"},
         }
     elif method == "ping":
         answer["result"] = {}

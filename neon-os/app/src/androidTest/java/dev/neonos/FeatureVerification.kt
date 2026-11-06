@@ -128,7 +128,7 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
             key = letterA()
         }
         screenshot("atlas-keyboard")
-        fun tapKeyboard(fractionX: Float, yDp: Float) {
+        fun keyboardPoint(fractionX: Float, yDp: Float): FloatArray {
             val coords = FloatArray(2)
             main {
                 val decor = atlas.window.decorView
@@ -139,24 +139,50 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
                 check(coords[1] < decor.height - insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
                     "Keyboard key overlaps Android navigation bar")
             }
-            val whenDown = SystemClock.uptimeMillis()
-            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
-                val event = MotionEvent.obtain(whenDown, SystemClock.uptimeMillis(), action, coords[0], coords[1], 0)
-                event.source = InputDevice.SOURCE_TOUCHSCREEN
-                try { check(automation.injectInputEvent(event, true), "NEON IME touch injection failed") }
-                finally { event.recycle() }
+            return coords
+        }
+        fun keyboardEvent(down: Long, action: Int, coords: FloatArray) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, coords[0], coords[1], 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            try { check(automation.injectInputEvent(event, true), "NEON IME touch injection failed") }
+            finally { event.recycle() }
+        }
+        fun tapKeyboard(fractionX: Float, yDp: Float) {
+            val coords = keyboardPoint(fractionX, yDp)
+            val down = SystemClock.uptimeMillis()
+            keyboardEvent(down, MotionEvent.ACTION_DOWN, coords)
+            keyboardEvent(down, MotionEvent.ACTION_UP, coords)
+        }
+        fun checkEditor(expected: String, message: String, clear: Boolean = false) {
+            Thread.sleep(200)
+            main {
+                val editor = find(atlas.window.decorView) { it is EditText } as EditText
+                check(editor.text.toString() == expected, message)
+                if (clear) editor.setText("")
             }
         }
-        if (key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) != true) tapKeyboard(1/18f, 83f)
-        Thread.sleep(220)
-        tapKeyboard(.53f, 184f)
-        Thread.sleep(220)
-        test.waitForIdleSync()
-        main {
-            val editor = find(atlas.window.decorView) { it is EditText } as EditText
-            check(editor.text.toString() == "a ", "NEON IME did not deliver letter and space")
-            editor.setText("")
-        }
+        if (key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) != true) tapKeyboard(1/18f, 123f)
+        Thread.sleep(150)
+        tapKeyboard(.53f, 224f)
+        checkEditor("a ", "NEON IME did not deliver letter and space", true)
+        val held = keyboardPoint(1/18f, 123f)
+        val moved = keyboardPoint(.30f, 95f)
+        val heldAt = SystemClock.uptimeMillis()
+        keyboardEvent(heldAt, MotionEvent.ACTION_DOWN, held)
+        Thread.sleep(420)
+        keyboardEvent(heldAt, MotionEvent.ACTION_MOVE, moved)
+        screenshot("v033-keyboard-accent")
+        keyboardEvent(heldAt, MotionEvent.ACTION_UP, moved)
+        checkEditor("â", "Slide across accent variants did not insert the selected letter", true)
+        tapKeyboard(.50f, 174f)
+        tapKeyboard(.85f, 71f)
+        tapKeyboard(.395f, 174f)
+        tapKeyboard(.25f, 71f)
+        checkEditor("voce", "Keyboard changed the typed word without a tap")
+        screenshot("v033-keyboard-suggestions")
+        tapKeyboard(.165f, 26f)
+        checkEditor("você ", "Tap on suggestion did not replace the typed token", true)
+        evidence.put("keyboard_accent_hold_slide", true).put("keyboard_suggestions_require_tap", true)
         main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}
         val hideDeadline=SystemClock.elapsedRealtime()+5000
         while(imeVisible()&&SystemClock.elapsedRealtime()<hideDeadline)Thread.sleep(100)

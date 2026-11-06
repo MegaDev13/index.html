@@ -399,6 +399,29 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
             android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { output -> output.readBytes() }
         }
         evidence.put("terminal_opens_app", true).put("terminal_brightness_and_media_read", true)
+        val bridge = open(BridgeActivity::class.java) as BridgeActivity
+        main { check(text(bridge, "INICIAR SESSÃO LOCAL")!!.performClick(), "Bridge control missing") }
+        val bridgeDeadline = SystemClock.elapsedRealtime() + 5000
+        var bridgeToken = ""
+        while (bridgeToken.isBlank() && SystemClock.elapsedRealtime() < bridgeDeadline) {
+            main { bridgeToken = (find(bridge.window.decorView) { it.tag == "neon:bridge-token" } as TextView).text.toString() }
+            if (bridgeToken.isBlank()) Thread.sleep(90)
+        }
+        check(bridgeToken.length == 32, "Bridge did not create a session key")
+        fun queryBridge(token: String, command: String) = java.net.Socket("127.0.0.1",38223).use { socket ->
+            socket.soTimeout = 2000
+            val request = JSONObject().put("token",token).put("check",command)
+            socket.getOutputStream().write((request.toString()+"\n").toByteArray())
+            JSONObject(socket.getInputStream().bufferedReader().readLine())
+        }
+        check(queryBridge(bridgeToken,"android").getString("value").contains("API 35"), "Bridge did not return Android data")
+        check(!queryBridge("invalid","android").getBoolean("ok"), "Bridge accepted a wrong key")
+        check(!queryBridge(bridgeToken,"shell").getBoolean("ok"), "Bridge accepted an unsupported tool")
+        main { bridge.finish() }
+        Thread.sleep(500)
+        check(runCatching { java.net.Socket("127.0.0.1",38223).close() }.isFailure, "Bridge did not stop on exit")
+        evidence.put("launcher_bridge_authenticated_and_stops", true)
+
         main { terminal.finish(); Themes.select(context, Themes.TERMINAL) }
         open(MainActivity::class.java, true)
         check(EventJournal.snapshot().any { it.kind == "THEME" && it.detail == Themes.TERMINAL }, "Theme event absent")
