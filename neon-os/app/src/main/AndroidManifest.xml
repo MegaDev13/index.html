@@ -18,6 +18,7 @@
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
         </activity>
         <activity android:name=".HudSettingsActivity" android:exported="false"/>
+        <activity android:name=".IconStudioActivity" android:exported="false"/>
         <activity android:name=".TerminalActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasEntryActivity" android:exported="true">

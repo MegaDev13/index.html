@@ -44,7 +44,7 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
             tap("GRID")
             main{(find(activity.window.decorView){it is EditText} as? EditText)?.setText("")}
             test.waitForIdleSync()
-            main{check(part("search")!=null,"Search theme missing");check(part("icon-frame")!=null,"Icon frame missing");val icon=part("icon") as? ImageView;check(icon!=null,"App icons missing");if(id==Themes.TERMINAL)check(icon!!.colorFilter!=null,"Terminal monochrome icon missing")}
+            main{check(part("search")!=null,"Search theme missing");check(part("icon-frame")!=null,"Icon frame missing");val icon=part("icon") as? ImageView;check(icon!=null,"App icons missing");if(id==Themes.TERMINAL)check(icon!!.drawable is NeonGlyph,"Terminal vector icon missing")}
             screenshot("${id}-grid")
             tap("STATUS");screenshot("${id}-status")
             check(prefs.getStringSet("favorites",emptySet())==saved,"Favorites changed during theme switch")

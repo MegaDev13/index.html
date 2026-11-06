@@ -159,31 +159,18 @@ class HudHomeView(
             log.setPadding(8, 4, 8, 4)
             log.setOnClickListener { route("terminal") }
         }
-        val symbols = listOf("☎", "▤", "▦", "◉", "⚙")
+        val symbols = listOf("phone", "chat", "grid", "ai", "settings")
         val descriptions = listOf("Telefone", "Mensagens", "Gaveta de aplicativos", "ATLAS", "Configuração")
         for (index in symbols.indices) {
-            val circle = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(style.panel)
-                setStroke(2, style.accent)
-            }
             val icon = ImageView(context).apply {
-                background = circle
+                setImageDrawable(NeonIcons.drawable(symbols[index], style, shape="circle"))
                 contentDescription = descriptions[index]
                 isFocusable = true
                 setOnClickListener { dockAction(index, false) }
                 setOnLongClickListener { dockAction(index, true); true }
             }
-            val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
-            val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = style.accent
-                textSize = 52f
-                textAlign = Paint.Align.CENTER
-            }
-            Canvas(bitmap).drawText(symbols[index], 48f, 66f, mark)
-            icon.setImageBitmap(bitmap)
             dockViews.add(icon)
-            place(icon, 28f + 77 * index, 739f, 46f, 46f)
+            place(icon, 24f + 77 * index, 736f, 53f, 53f)
         }
         setOnLongClickListener { route("edit"); true }
         updateWeather(null, false)

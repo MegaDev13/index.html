@@ -24,6 +24,7 @@ class MainActivity: Activity() {
     private val prefs by lazy { getSharedPreferences("neon",0) }
     private val repo by lazy { AppRepository(this) }
     private val packs by lazy { IconPack(this) }
+    private val iconStore by lazy { IconStore(this) }
     private val io=Executors.newSingleThreadExecutor()
     private val handler=Handler(Looper.getMainLooper())
     private val iconCache=android.util.LruCache<String,android.graphics.drawable.Drawable>(80)
@@ -164,10 +165,29 @@ class MainActivity: Activity() {
         widgetViews()
     }
     private fun loadHudIcon(app:AppEntry,view:ImageView) {
+        val style=theme
+        val key="${style.id}:${style.accent}:${iconStore.revision}:${prefs.getString("iconPack","")}:${app.key}"
+        val inset=if(iconStore.state(app,style.id)=="Original")dp(7)else dp(2)
+        view.setPadding(inset,inset,inset,inset)
+        view.tag=key
+        fun display(drawable:android.graphics.drawable.Drawable){
+            view.setImageDrawable(drawable.constantState?.newDrawable(resources)?.mutate()?:drawable)
+            Themes.tag(view,"icon",style)
+        }
+        iconCache.get(key)?.let {display(it);return}
         if(io.isShutdown)return
         io.execute {
-            val icon=packs.icon(prefs.getString("iconPack","").orEmpty(),app)?:repo.icon(app)
-            handler.post {if(!isDestroyed&&icon!=null){view.setImageDrawable(icon);Themes.icon(view,theme)}}
+            val icon=runCatching {
+                iconStore.drawable(app,style)
+                    ?:if(iconStore.state(app,style.id)=="Original")repo.icon(app)
+                    else packs.icon(prefs.getString("iconPack","").orEmpty(),app)?:repo.icon(app)
+            }.getOrNull()
+            handler.post {
+                if(!isDestroyed&&icon!=null){
+                    iconCache.put(key,icon)
+                    if(view.tag==key)display(icon)
+                }
+            }
         }
     }
     private fun launchApp(app:AppEntry) {
@@ -277,12 +297,7 @@ class MainActivity: Activity() {
                 val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
                 tile.setOnClickListener {launchApp(app)}
                 tile.setOnLongClickListener {appMenu(app);true}
-                val key=prefs.getString("iconPack","")+app.key
-                val cached=iconCache.get(key)
-                if(cached!=null){icon.setImageDrawable(cached.constantState?.newDrawable(resources)?.mutate()?:cached);Themes.icon(icon,theme);Themes.tag(icon,"icon",theme)} else if(!io.isShutdown)io.execute {
-                    val drawable=packs.icon(prefs.getString("iconPack","")?:"",app)?:repo.icon(app)
-                    handler.post {if(!isDestroyed && drawable!=null){iconCache.put(key,drawable);icon.setImageDrawable(drawable.constantState?.newDrawable(resources)?.mutate()?:drawable);Themes.icon(icon,theme);Themes.tag(icon,"icon",theme)}}
-                }
+                loadHudIcon(app,icon)
                 row.addView(tile,LinearLayout.LayoutParams(0,-2,1f))
             }
             repeat(columns-rowEntries.size){row.addView(View(this),LinearLayout.LayoutParams(0,1,1f))};parent.addView(row)
@@ -321,6 +336,7 @@ class MainActivity: Activity() {
         add(mono("NEON CONFIG"));add(label("Sua frequência.",32f))
         add(mono("TEMA ATIVO / ${theme.title}"))
         for(id in Themes.ids)add(button(Themes.spec(id).title) {Themes.select(this,id);art.themeId=id;art.accent=accent;art.invalidate();show("CONFIG")})
+        add(button("NEON ICON STUDIO"){safeStart(Intent(this,IconStudioActivity::class.java))})
         add(button("HUD / CLIMA"){hudRoute("weather")})
         add(button("TERMINAL / EVENTOS REAIS"){hudRoute("terminal")})
         add(button("CONFIGURAR ATLAS") {openAtlas()})
@@ -353,7 +369,7 @@ class MainActivity: Activity() {
         add(button("EXPORTAR WALLPAPER PNG") {safeStartForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("image/png").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"NEON-CORE-1220x2712.png"),201)})
         add(button("PACOTE DE ÍCONES INSTALADO") {
             val options=listOf("" to "Ícones originais com moldura NEON")+packs.packs()
-            AlertDialog.Builder(this).setTitle("Pacote compatível com appfilter.xml").setItems(options.map{it.second}.toTypedArray()){_,i->prefs.edit().putString("iconPack",options[i].first).apply();iconCache.evictAll();toast("Pacote selecionado para a Home NEON.")}.show()
+            AlertDialog.Builder(this).setTitle("Pacote compatível com appfilter.xml").setItems(options.map{it.second}.toTypedArray()){_,i->prefs.edit().putString("iconPack",options[i].first).apply();iconStore.changeMode(if(options[i].first.isBlank())"original" else "pack");iconCache.evictAll();toast("Pacote selecionado para a Home NEON.")}.show()
         })
         add(label("Pacotes ADW/appfilter e ícones originais. Ícones do perfil de trabalho mantêm o distintivo do Android. Máscaras e formatos proprietários de temas não são importados.",12f,muted))
         add(button("ADICIONAR WIDGET À HOME NEON") {pickWidget()})
