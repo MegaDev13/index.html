@@ -21,7 +21,7 @@ class AppRepository(private val context: Context) {
             AppEntry(a.componentName,user,users.getSerialNumberForUser(user),a.label.toString(),a.applicationInfo.category)
         } } catch (_: SecurityException) { emptyList() }
     }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
-    fun open(app: AppEntry) = launcher.startMainActivity(app.component,app.user,null,null)
+    fun open(app: AppEntry) {launcher.startMainActivity(app.component,app.user,null,null);EventJournal.record("APP_LAUNCH",app.label)}
     fun info(app: AppEntry) = launcher.startAppDetailsActivity(app.component,app.user,null,null)
     fun icon(app: AppEntry): Drawable? = try { launcher.getActivityList(app.component.packageName,app.user).firstOrNull { it.componentName==app.component }?.getBadgedIcon(0) } catch (_: Exception) { null }
 }

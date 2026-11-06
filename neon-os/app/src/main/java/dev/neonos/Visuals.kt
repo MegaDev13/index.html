@@ -56,7 +56,8 @@ object NeonArt {
 }
 class ArtView(context: Context, var accent: Int): View(context) {
     var themeId=Themes.current(context).id
-    override fun onDraw(canvas: Canvas) { NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent,themeId) }
+    var hudMode=false
+    override fun onDraw(canvas: Canvas) { if(hudMode)canvas.drawColor(Color.BLACK)else NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent,themeId) }
 }
 class AccessView(context: Context): View(context) {
     var accent=Color.CYAN; var effect=2; var intensity=.65f; var luminance=.8f

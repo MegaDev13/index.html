@@ -33,6 +33,15 @@ class MainActivity: Activity() {
     private lateinit var diagnostics: Diagnostics
     private var clock: TextView?=null;private var date: TextView?=null;private var battery: TextView?=null
     private var atlasHomeButton:TextView?=null
+    private var hud:HudHomeView?=null
+    private var plugged=false
+    private var uiSettingsHash=0
+    private var networkState=""
+    private val weather by lazy { WeatherClient(this) }
+    private val weatherWorker=Executors.newSingleThreadExecutor()
+    private var weatherBusy=false
+    private var weatherGeneration=0
+    private var weatherFailed=false
     private var gridBody: LinearLayout?=null;private var batteryLevel=-1
     private var resumed=false;private var sessionGeneration=0
     private val gate=UnlockGate()
@@ -46,13 +55,23 @@ class MainActivity: Activity() {
     private val accent:Int get()=theme.accent
     private val textColor:Int get()=theme.text
     private val muted:Int get()=theme.muted
-    private val tick=object: Runnable {override fun run() {if(!resumed)return;updateClock();handler.postDelayed(this,60000-System.currentTimeMillis()%60000)}}
-    private val networkCallback=object:android.net.ConnectivityManager.NetworkCallback(){override fun onAvailable(network:android.net.Network){handler.post{if(resumed)updateAtlasState()}};override fun onLost(network:android.net.Network){handler.post{if(resumed)updateAtlasState()}}}
-    private fun updateAtlasState(){val mode=if(prefs.getBoolean("atlas_integrated",false))"INTEGRADO"else"CHATGPT OFICIAL";val online=AtlasApi(this).connected();atlasHomeButton?.text="ATLAS\n$mode / ${if(online)"REDE DISPONÍVEL"else"OFFLINE"}"}
+    private val tick=object: Runnable {override fun run() {if(!resumed)return;updateClock();refreshWeather();handler.postDelayed(this,60000-System.currentTimeMillis()%60000)}}
+    private val networkCallback=object:android.net.ConnectivityManager.NetworkCallback(){override fun onAvailable(network:android.net.Network){handler.post{if(resumed)networkChanged()}};override fun onLost(network:android.net.Network){handler.post{if(resumed)networkChanged()}}}
+    private fun updateAtlasState(){hud?.updateClockAndNetwork();if(hud!=null)return;val mode=if(prefs.getBoolean("atlas_integrated",false))"INTEGRADO"else"CHATGPT OFICIAL";val online=AtlasApi(this).connected();atlasHomeButton?.text="ATLAS\n$mode / ${if(online)"REDE DISPONÍVEL"else"OFFLINE"}"}
     private val broadcast=object: BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             when(i.action) {
-                Intent.ACTION_BATTERY_CHANGED -> {val scale=i.getIntExtra("scale",100);batteryLevel=if(scale>0)i.getIntExtra("level",0)*100/scale else -1;battery?.text=if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —"}
+                Intent.ACTION_BATTERY_CHANGED -> {
+                    val scale=i.getIntExtra("scale",100)
+                    val next=if(scale>0)i.getIntExtra("level",-1)*100/scale else -1
+                    val connected=i.getIntExtra("plugged",0)!=0
+                    if(next>=0 && next!=batteryLevel)EventJournal.record("BATTERY","$next%")
+                    if(connected!=plugged)EventJournal.record("POWER",if(connected)"Carregador conectado" else "Carregador desconectado")
+                    batteryLevel=next
+                    plugged=connected
+                    battery?.text=if(next>=0)"BATERIA  $next%" else "BATERIA  —"
+                    hud?.updateBattery(next,connected)
+                }
                 PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> updateRefresh()
                 Intent.ACTION_SCREEN_OFF -> gate.observeLocked()
                 Intent.ACTION_USER_PRESENT -> {gate.userPresent(SystemClock.elapsedRealtime());maybeAccess()}
@@ -72,15 +91,16 @@ class MainActivity: Activity() {
         pendingWidget=state?.getInt("pendingWidget",-1)?:-1
         widgetConfiguring=state?.getBoolean("widgetConfiguring",false)?:false
         diagnostics=Diagnostics(this)
+        EventJournal.record("NEON_OS","Inicializado / ${BuildConfig.VERSION_NAME}")
         window.decorView.systemUiVisibility=0
-        window.setDecorFitsSystemWindows(true)
+        window.setDecorFitsSystemWindows(false)
         root=FrameLayout(this)
         art=ArtView(this,accent);root.addView(art,FrameLayout.LayoutParams(-1,-1))
         column=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(10),dp(20),0)}
         root.addView(column,FrameLayout.LayoutParams(-1,-1))
         root.setOnApplyWindowInsetsListener { _,insets ->
             val bar=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            column.setPadding(dp(20)+bar.left,dp(10)+bar.top,dp(20)+bar.right,bar.bottom)
+            column.setPadding(dp(20)+bar.left,dp(10)+bar.top,dp(20)+bar.right,maxOf(bar.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom))
             insets
         }
         access=AccessView(this);root.addView(access,FrameLayout.LayoutParams(-1,-1))
@@ -96,10 +116,10 @@ class MainActivity: Activity() {
         getSystemService(LauncherApps::class.java).registerCallback(packageCallback,handler)
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
-    override fun onResume() {super.onResume();if(drawnTheme!=theme.id){art.themeId=theme.id;art.accent=accent;art.invalidate();show(page)};updateRefresh();resumed=true;updateAtlasState();updateClock();handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
-    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);access.stop();super.onPause()}
+    override fun onResume() {super.onResume();if(drawnTheme!=theme.id||uiSettingsHash!=prefs.all.hashCode())show(page);updateRefresh();resumed=true;EventJournal.record("LAUNCHER","Ativo");networkChanged();updateClock();hud?.updateBattery(batteryLevel,plugged);handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
+    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
     override fun onStop() {getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
-    override fun onDestroy() {sessionGeneration++;io.shutdownNow();super.onDestroy()}
+    override fun onDestroy() {sessionGeneration++;weatherWorker.shutdownNow();io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
     override fun onBackPressed() {if(page!="HOME")show("HOME") else if(!isDefaultHome())super.onBackPressed()}
@@ -112,7 +132,7 @@ class MainActivity: Activity() {
     private fun add(view: View,parent: LinearLayout=body,weight: Float=0f) {parent.addView(view,LinearLayout.LayoutParams(if(weight>0)0 else -1,if(weight>0)-1 else -2,weight).apply {bottomMargin=dp(10)})}
     private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
-        page=target;drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
+        uiSettingsHash=prefs.all.hashCode();hud?.stopMotion();hud=null;page=target;art.hudMode=target=="HOME";drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
         val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
         header.addView(mono(when(theme.id){Themes.TERMINAL->">_ NEON";Themes.CORPORATE->"NEON / INDUSTRIES";else->"N / OS"},14f),LinearLayout.LayoutParams(0,-2,1f));header.addView(mono(if(isDefaultHome())"LAUNCHER" else "COMPANION",9f,muted));column.addView(header)
         val scroll=ScrollView(this).apply {isFillViewport=true;isVerticalScrollBarEnabled=false}
@@ -123,6 +143,88 @@ class MainActivity: Activity() {
         for(name in listOf("HOME","GRID","ATLAS","STATUS","CONFIG")) {val b=label(name,12f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {if(name=="ATLAS")startActivity(Intent(this@MainActivity,AtlasEntryActivity::class.java))else show(name)};setOnLongClickListener {if(name=="ATLAS"){openAtlas();true}else false};Themes.tag(this,"dock",theme)};nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
     }
     private fun home() {
+        if(resources.configuration.fontScale>1.5f){legacyHome();return}
+        val favorites=prefs.getStringSet("favorites",emptySet()).orEmpty()
+        val chosen=apps.filter{it.key in favorites}.ifEmpty{apps.filter{it.component.packageName!=packageName}.take(8)}
+        val view=HudHomeView(this,chosen,::loadHudIcon,::launchApp,::appMenu,::hudRoute,::hudDock)
+        hud=view
+        val ownBody=body
+        val width=(resources.configuration.screenWidthDp-40).coerceAtLeast(250)
+        val scale=prefs.getInt("hud_scale",1)
+        ownBody.addView(view,LinearLayout.LayoutParams(-1,dp((width*when(scale){0->1.75f;2->2.5f;else->2.06f}).toInt())))
+        if(scale==1)(ownBody.parent as? ScrollView)?.addOnLayoutChangeListener{_,_,top,_,bottom,_,_,_,_->
+            val available=bottom-top-ownBody.paddingTop-ownBody.paddingBottom
+            if(available>=dp(490)&&view.layoutParams.height!=available)view.layoutParams=view.layoutParams.apply{height=available}
+        }
+        view.updateBattery(batteryLevel,plugged)
+        view.updateClockAndNetwork()
+        renderWeather()
+        add(button("TODOS OS APLICATIVOS  ↗"){show("GRID")})
+        shortcuts()
+        widgetViews()
+    }
+    private fun loadHudIcon(app:AppEntry,view:ImageView) {
+        if(io.isShutdown)return
+        io.execute {
+            val icon=packs.icon(prefs.getString("iconPack","").orEmpty(),app)?:repo.icon(app)
+            handler.post {if(!isDestroyed&&icon!=null){view.setImageDrawable(icon);Themes.icon(view,theme)}}
+        }
+    }
+    private fun launchApp(app:AppEntry) {
+        try{access.stop();repo.open(app)}
+        catch(_:Exception){EventJournal.record("ERROR","Aplicativo indisponível");toast("Aplicativo indisponível ou perfil pausado.");loadApps()}
+    }
+    private fun hudRoute(target:String) {
+        when(target) {
+            "weather"->safeStart(Intent(this,HudSettingsActivity::class.java))
+            "battery"->safeStart(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
+            "calendar"->safeStart(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR))
+            "connectivity"->safeStart(Intent(Settings.ACTION_WIRELESS_SETTINGS))
+            "atlas"->safeStart(Intent(this,AtlasEntryActivity::class.java))
+            "atlas-panel"->openAtlas()
+            "terminal"->safeStart(Intent(this,TerminalActivity::class.java))
+            "edit"->show("CONFIG")
+        }
+    }
+    private fun hudDock(index:Int,long:Boolean) {
+        if(long){if(index==3)openAtlas() else show("CONFIG");return}
+        when(index) {
+            0->safeStart(Intent(Intent.ACTION_DIAL))
+            1->safeStart(Intent(Intent.ACTION_SENDTO,Uri.parse("sms:")))
+            2->show("GRID")
+            3->hudRoute("atlas")
+            else->show("CONFIG")
+        }
+    }
+    private fun networkChanged() {
+        val value=if(AtlasApi(this).connected())"Rede disponível" else "Offline"
+        if(value!=networkState){networkState=value;EventJournal.record("NETWORK",value)}
+        updateAtlasState()
+        renderWeather()
+    }
+    private fun renderWeather() {
+        val view=hud?:return
+        val reading=weather.cached()
+        val age=reading?.let{System.currentTimeMillis()-it.fetched}?:0L
+        view.updateWeather(reading,weatherFailed||!AtlasApi(this).connected()||age>prefs.getInt("weather_interval",60).coerceAtLeast(30)*60000L)
+    }
+    private fun refreshWeather() {
+        if(weatherBusy||!weather.due()||!AtlasApi(this).connected())return
+        weatherBusy=true
+        val generation=weatherGeneration
+        weatherWorker.execute {
+            val result=runCatching{weather.refresh()}
+            handler.post {
+                if(resumed&&generation==weatherGeneration){
+                    weatherBusy=false
+                    weatherFailed=result.isFailure
+                    renderWeather()
+                    if(weatherFailed)EventJournal.record("WEATHER","Consulta indisponível")
+                }
+            }
+        }
+    }
+    private fun legacyHome() {
         add(mono(when(theme.id){Themes.TERMINAL->"user@neon:~ / HOME";Themes.CORPORATE->"PERSONNEL / PRIVATE WORKSPACE";else->"PERSONAL TERMINAL   /   01"}))
         clock=label("",64f).apply {typeface=if(theme.id==Themes.NEON)Typeface.create("sans-serif-thin",Typeface.NORMAL)else Typeface.create(theme.font,Typeface.NORMAL);letterSpacing=if(theme.mono)0f else -.04f;Themes.tag(this,"clock",theme)};add(clock!!)
         date=mono("",12f,muted);add(date!!);updateClock()
@@ -138,7 +240,7 @@ class MainActivity: Activity() {
         shortcuts()
         widgetViews()
     }
-    private fun updateClock() {val now=Date();clock?.text=SimpleDateFormat("HH:mm",Locale.getDefault()).format(now);date?.text=SimpleDateFormat("EEEE, dd MMMM",Locale("pt","BR")).format(now).uppercase(Locale("pt","BR"))}
+    private fun updateClock() {hud?.updateClockAndNetwork();val now=Date();clock?.text=SimpleDateFormat("HH:mm",Locale.getDefault()).format(now);date?.text=SimpleDateFormat("EEEE, dd MMMM",Locale("pt","BR")).format(now).uppercase(Locale("pt","BR"))}
     private fun loadApps() {
         if(io.isShutdown)return
         val generation=++sessionGeneration
@@ -173,7 +275,7 @@ class MainActivity: Activity() {
                 val icon=ImageView(this).apply {setPadding(dp(11),dp(11),dp(11),dp(11));importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO}
                 frame.addView(icon,FrameLayout.LayoutParams(-1,-1));tile.addView(frame,LinearLayout.LayoutParams(dp(58),dp(58)))
                 val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
-                tile.setOnClickListener {try {access.stop();repo.open(app)}catch(_:Exception){toast("Aplicativo indisponível ou perfil pausado.");loadApps()}}
+                tile.setOnClickListener {launchApp(app)}
                 tile.setOnLongClickListener {appMenu(app);true}
                 val key=prefs.getString("iconPack","")+app.key
                 val cached=iconCache.get(key)
@@ -219,6 +321,8 @@ class MainActivity: Activity() {
         add(mono("NEON CONFIG"));add(label("Sua frequência.",32f))
         add(mono("TEMA ATIVO / ${theme.title}"))
         for(id in Themes.ids)add(button(Themes.spec(id).title) {Themes.select(this,id);art.themeId=id;art.accent=accent;art.invalidate();show("CONFIG")})
+        add(button("HUD / CLIMA"){hudRoute("weather")})
+        add(button("TERMINAL / EVENTOS REAIS"){hudRoute("terminal")})
         add(button("CONFIGURAR ATLAS") {openAtlas()})
         add(button("WIDGET COMPACTO ATLAS") {if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(ComponentName(this,AtlasWidget::class.java),null,null)else toast("Adicione ATLAS pelo menu Widgets do launcher.")})
         add(button("GUIA NATIVO / PRESERVAR GESTOS") {nativeSetup()})
@@ -284,7 +388,7 @@ class MainActivity: Activity() {
     }
     private fun applyWallpaper(flags:Int) {
         toast("Gerando wallpaper…")
-        io.execute {var ok=false;try {val image=NeonArt.wallpaper(1220,2712,accent,theme.id);try{WallpaperManager.getInstance(this).setBitmap(image,null,true,flags);ok=true}finally{image.recycle()}}catch(_:Exception){};handler.post {if(!isDestroyed)toast(if(ok)"Wallpaper aplicado." else "Aplicação bloqueada pelo sistema. Exporte o PNG e aplique pelo app Temas.")}}
+        io.execute {var ok=false;try {val image=NeonArt.wallpaper(1220,2712,accent,theme.id);try{WallpaperManager.getInstance(this).setBitmap(image,null,true,flags);ok=true;EventJournal.record("WALLPAPER","Wallpaper NEON aplicado")}finally{image.recycle()}}catch(_:Exception){};handler.post {if(!isDestroyed)toast(if(ok)"Wallpaper aplicado." else "Aplicação bloqueada pelo sistema. Exporte o PNG e aplique pelo app Temas.")}}
     }
     private fun maybeAccess() {
         if(!resumed)return

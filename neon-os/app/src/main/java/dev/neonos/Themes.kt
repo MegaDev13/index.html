@@ -26,7 +26,9 @@ object Themes {
     fun current(context:Context):ThemeSpec {val p=context.getSharedPreferences("neon",0);return spec(p.getString("theme",NEON)?:NEON,p.getInt("accent",Color.rgb(58,242,228)))}
     fun select(context:Context,id:String) {
         require(id in ids)
+        val changed=current(context).id!=id
         context.getSharedPreferences("neon",0).edit().putString("theme",id).commit()
+        if(changed)EventJournal.record("THEME",id)
         NeonWidget.refresh(context);AtlasWidget.refresh(context)
     }
     fun icon(view:ImageView,spec:ThemeSpec) {

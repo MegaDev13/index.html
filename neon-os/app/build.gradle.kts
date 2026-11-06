@@ -7,8 +7,8 @@ android {
         applicationId = "dev.neonos.poco"
         minSdk = 33
         targetSdk = 35
-        versionCode = 10200
-        versionName = "0.2.0"
+        versionCode = 10300
+        versionName = "0.3.0"
         testInstrumentationRunner = "dev.neonos.SmokeInstrumentation"
     }
     buildTypes {

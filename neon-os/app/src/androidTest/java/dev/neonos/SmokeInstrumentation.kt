@@ -43,7 +43,7 @@ class SmokeInstrumentation: Instrumentation() {
             }
             fun screenshot(name:String) {Thread.sleep(350);unobstructed();uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
             Thread.sleep(1300);waitForIdleSync()
-            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER","android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE","android.permission.RECORD_AUDIO"),"Unexpected permission")
+            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER","android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE","android.permission.RECORD_AUDIO","android.permission.ACCESS_COARSE_LOCATION","android.permission.BLUETOOTH_CONNECT"),"Unexpected permission")
             runOnMainSync {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
             screenshot("01-home")
             click("GRID");runOnMainSync {check(find(window,"Aplicativos")!=null,"Grid title missing")};screenshot("02-grid")
