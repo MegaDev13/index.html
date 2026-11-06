@@ -395,7 +395,9 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         while (test.uiAutomation.rootInActiveWindow?.packageName?.toString() != "com.android.settings" &&
             SystemClock.elapsedRealtime() < openDeadline) Thread.sleep(120)
         check(test.uiAutomation.rootInActiveWindow?.packageName?.toString() == "com.android.settings", "Terminal open did not launch Settings")
-        test.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        test.uiAutomation.executeShellCommand("input keyevent KEYCODE_BACK").use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { output -> output.readBytes() }
+        }
         evidence.put("terminal_opens_app", true).put("terminal_brightness_and_media_read", true)
         main { terminal.finish(); Themes.select(context, Themes.TERMINAL) }
         open(MainActivity::class.java, true)
