@@ -207,7 +207,7 @@ class WallpaperActivity : NeonPanel() {
         }
     }
 
-    override fun onActivityResult(code: Int, result: Int, data: Intent?) {
+    public override fun onActivityResult(code: Int, result: Int, data: Intent?) {
         super.onActivityResult(code, result, data)
         if (result != RESULT_OK) return
         if (code == 502) {

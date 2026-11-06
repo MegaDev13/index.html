@@ -8,6 +8,7 @@ import android.graphics.*
 import android.net.Uri
 import android.os.SystemClock
 import android.view.*
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -133,20 +134,20 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         shot("v2-icon-studio")
         main { studio.preview(draft) }
         shot("v2-icon-pack-preview")
-        main {
-            val control = test.uiAutomation.rootInActiveWindow
-            check(control != null, "Icon preview dialog missing")
-        }
         val oldIcons = prefs.getString("icon_overrides", null)
         val previousIcons = prefs.getString("icon_previous", null)
-        check(store.apply(draft, draft.entries, apps) >= 3, "Pack did not apply across themes")
-        check(store.state(selected[0], Themes.NEON) == "Imagem personalizada", "Imported icon not selected")
+        val applyButton = test.uiAutomation.rootInActiveWindow
+            ?.findAccessibilityNodeInfosByText("Aplicar selecionados")?.firstOrNull { it.isClickable }
+        check(applyButton?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true, "Icon preview apply unavailable")
+        val iconDeadline = SystemClock.elapsedRealtime() + 6000
+        while (store.state(selected[0], Themes.NEON) != "Imagem personalizada" &&
+            SystemClock.elapsedRealtime() < iconDeadline) Thread.sleep(120)
+        check(Themes.ids.all { store.state(selected[0], it) == "Imagem personalizada" }, "Imported icon missing in a theme")
         store.choose(selected[0], Themes.NEON, "original")
         check(store.drawable(selected[0], Themes.spec(Themes.NEON)) == null, "Original icon not restored")
         check(store.restorePrevious() && store.drawable(selected[0], Themes.spec(Themes.NEON)) != null, "Previous icon set lost")
         val bad = zip(listOf("NEON_ICON_PACK/../bad.png" to icon))
         check(runCatching { store.stage(ByteArrayInputStream(bad)) }.isFailure, "Unsafe ZIP accepted")
-        test.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         main {
             studio.finish()
             prefs.edit().putString("icon_overrides", oldIcons).putString("icon_previous", previousIcons).putLong("icon_revision", store.revision + 1).commit()

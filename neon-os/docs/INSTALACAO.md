@@ -1,11 +1,13 @@
-# NEON OS 0.2.0 — instalação, configuração e reversão
+# NEON OS 0.3.0 — instalação, configuração e reversão
 
 ## Atualizar a versão anterior
 
-1. Baixe **NEON-OS-0.2.0.apk**, o release assinado da entrega. Os APKs unsigned/debug do Actions são artefatos de desenvolvimento.
-2. Instale por cima do NEON OS 0.1.1. O applicationId continua `dev.neonos.poco`, o versionCode sobe de 10001 para 10200 e o certificado é o mesmo. Não desinstale para atualizar: isso apagaria as preferências e o histórico local do NEON.
+1. Baixe **NEON-OS-0.3.0.apk**, o release assinado da entrega. Os APKs unsigned/debug do Actions são artefatos de desenvolvimento.
+2. Instale por cima do NEON OS 0.2.0. O applicationId continua `dev.neonos.poco`, o versionCode sobe de 10200 para 10300 e o certificado é o mesmo. Não desinstale para atualizar: isso apagaria as preferências e o histórico local do NEON.
 3. Autorize apenas a instalação solicitada normalmente pelo Android. Mantenha as proteções do aparelho. Uma assinatura igual permite a atualização, mas a instalação sobre a versão anterior ainda precisa ser verificada no aparelho físico.
 4. Abra NEON OS. Em **CONFIG**, escolha Cyberpunk Neon, Dark Terminal ou Corporate Dystopia. A escolha é persistente e não altera a ordem dos favoritos ou os IDs de widgets.
+
+Em **CONFIG**, abra **HUD / CLIMA** para configurar uma cidade, **NEON ICON STUDIO** para escolher ou importar ícones e **WALLPAPER PRÓPRIO** para escolher uma imagem. Veja [os controles da Home e os limites](IMPLEMENTACAO-V2.md).
 
 ## Preservar os gestos do POCO
 
@@ -37,7 +39,7 @@ Comandos disponíveis incluem abrir aplicativos/configurações/câmera/calendá
 
 ## Permissões e dados
 
-O APK declara `SET_WALLPAPER`, `INTERNET`, `ACCESS_NETWORK_STATE` e `RECORD_AUDIO`. Apenas o microfone depende de concessão em tempo de execução e só é solicitado ao tocar em FALAR. Não há permissão de câmera, contatos, localização, arquivos privados, notificações ou AccessibilityService. A vinculação de widgets e os papéis padrão dependem das telas oficiais do Android.
+O APK declara `SET_WALLPAPER`, `INTERNET`, `ACCESS_NETWORK_STATE`, `RECORD_AUDIO`, `ACCESS_COARSE_LOCATION` e `BLUETOOTH_CONNECT`. O microfone é solicitado ao tocar em FALAR. Use cidade manual se preferir dispensar localização. O estado Bluetooth depende da autorização opcional no HUD. A importação de imagens usa somente o documento escolhido pelo seletor Android. O provedor Open-Meteo recebe a busca da cidade ou a coordenada aproximada para calcular a previsão. A vinculação de widgets e os papéis padrão passam pelos controles do Android.
 
 Token e histórico local independente usam AES-GCM com chave no Android Keystore, em arquivo privado sem backup Android. A retenção pode ser desativada ou ajustada para 1, 7 ou 30 dias. Expurgo por idade ocorre ao ler/gravar, sem serviço em segundo plano. **CONFIGURAR → Apagar histórico** remove as conversas locais; sair remove o token e tenta revogar a sessão do servidor. Sem confirmação de rede, a sessão remota expira em até 24 horas.
 
