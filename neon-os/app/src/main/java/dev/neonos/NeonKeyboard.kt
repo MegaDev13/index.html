@@ -33,22 +33,12 @@ class NeonKeyboard : InputMethodService() {
         setPadding(dp(3), dp(6), dp(3), dp(6))
         keys = this
         setOnApplyWindowInsetsListener { _, insets ->
-            keepNavigationClear(insets)
+            val safe = insets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.navigationBars() or WindowInsets.Type.displayCutout())
+            setPadding(dp(3) + safe.left, dp(6), dp(3) + safe.right, dp(6))
             insets
         }
-        post { rootWindowInsets?.let(::keepNavigationClear) }
         render()
-    }
-
-    private fun keepNavigationClear(insets: WindowInsets) {
-        val types = WindowInsets.Type.navigationBars() or WindowInsets.Type.displayCutout()
-        val safe = (keys.rootWindowInsets ?: insets).getInsetsIgnoringVisibility(types)
-        val left = dp(3) + safe.left
-        val right = dp(3) + safe.right
-        val bottom = dp(6) + safe.bottom
-        if (keys.paddingLeft != left || keys.paddingRight != right || keys.paddingBottom != bottom) {
-            keys.setPadding(left, dp(6), right, bottom)
-        }
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -110,6 +100,9 @@ class NeonKeyboard : InputMethodService() {
                 currentInputConnection?.performEditorAction(info.actionId)
             } else if (!sendDefaultEditorAction(true)) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         }
+        // The IME framework can consume navigation insets before they reach its input view.
+        // A measured footer keeps the last row above either navigation mode from the first layout.
+        keys.addView(android.widget.Space(this), LinearLayout.LayoutParams(-1, dp(52)))
     }
 
     private fun row() = LinearLayout(this).also { keys.addView(it, LinearLayout.LayoutParams(-1, -2)) }
