@@ -17,7 +17,7 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
     private lateinit var activity:MainActivity
     private val context get()=test.targetContext
     private fun check(value:Boolean,description:String){checks++;if(!value)throw AssertionError(description)}
-    private fun find(view:View,predicate:(View)->Boolean):View? {if(predicate(view))return view;if(view is ViewGroup)for(i in 0 until view.childCount){val item=find(view.getChildAt(i),predicate);if(item!=null)return item};return null}
+    private fun find(view:View,predicate:(View)->Boolean):View? {if((view.tag as? String)?.startsWith("neon:page:")==true && view.visibility!=View.VISIBLE)return null;if(predicate(view))return view;if(view is ViewGroup)for(i in 0 until view.childCount){val item=find(view.getChildAt(i),predicate);if(item!=null)return item};return null}
     private fun label(value:String)=find(activity.window.decorView){it is TextView&&it.text.toString()==value} as? TextView
     private fun part(value:String)=find(activity.window.decorView){it.tag=="theme:${Themes.current(context).id}:$value"}
     private fun main(block: () -> Unit) = test.onUi(block)
@@ -47,7 +47,7 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         test.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0))
         test.sendPointerSync(MotionEvent.obtain(now, now+25, MotionEvent.ACTION_UP, x, y, 0))
         test.waitForIdleSync()
-        Thread.sleep(250)
+        Thread.sleep(420)
     }
     private fun screenshot(name:String){Thread.sleep(400);foreground();val b=test.uiAutomation.takeScreenshot();check(b!=null,"Screenshot unavailable");b!!.let{File(dir,name+".png").outputStream().use {s->it.compress(Bitmap.CompressFormat.PNG,100,s)};it.recycle()}}
     private fun startMain():MainActivity=(test.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity).also{test.waitForIdleSync();Thread.sleep(600)}
@@ -108,6 +108,19 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
                 val v=find(decor,predicate)!!;val r=android.graphics.Rect()
                 check(v.getGlobalVisibleRect(r)&&r.height()==v.height&&r.bottom<=bottom,"Composer or send button covered by keyboard")
             }
+        }
+        val automation = test.uiAutomation
+        val info = automation.serviceInfo
+        info.flags = info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        automation.serviceInfo = info
+        val ime = automation.windows.firstOrNull { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        val key = ime?.root?.findAccessibilityNodeInfosByText("a")?.firstOrNull { it.text?.toString() == "a" && it.isClickable }
+        check(key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true, "NEON IME key missing")
+        test.waitForIdleSync()
+        main {
+            val editor = find(atlas.window.decorView) { it is EditText } as EditText
+            check(editor.text.toString() == "a", "NEON IME did not deliver text to editor")
+            editor.setText("")
         }
         screenshot("atlas-keyboard")
         main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}

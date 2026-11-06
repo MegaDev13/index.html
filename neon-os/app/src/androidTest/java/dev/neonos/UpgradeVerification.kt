@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.app.WallpaperManager
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.*
 import android.net.Uri
 import android.os.SystemClock
@@ -107,9 +108,14 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         shot("v2-hud-map-weather")
         val hudBounds = Rect()
         main { check(find(home.window.decorView) { it is HudHomeView }!!.getGlobalVisibleRect(hudBounds), "HUD invisible") }
+        val ring = find(home.window.decorView) { it.tag == "neon:weather-ring" }!!
+        var angle = 0f
+        main { angle = ring.rotation }
+        Thread.sleep(200)
+        main { check(kotlin.math.abs(ring.rotation - angle) > 1f, "Weather ring did not rotate") }
         val gestureX = hudBounds.centerX().toFloat()
         val gestureY = hudBounds.top + hudBounds.height() * .65f
-        val drawer = find(home.window.decorView) { it.tag == "neon:swipe-drawer" }!!
+        val drawer = find(home.window.decorView) { it.tag == "neon:page:GRID" }!!
         val distance = drawer.height * .42f
         val downTime = SystemClock.uptimeMillis()
         fun send(action: Int, y: Float, elapsed: Long) {
@@ -149,6 +155,34 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
             check(text(home, "Aplicativos") != null, "Drawer title missing")
         }
         shot("v2-gesture-drawer")
+        val viewportBounds = Rect()
+        main { check(drawer.getGlobalVisibleRect(viewportBounds), "Open drawer bounds missing") }
+        val topX = viewportBounds.centerX().toFloat()
+        val topY = viewportBounds.top + viewportBounds.height() * .025f
+        swipe(topX, topY, 0f, viewportBounds.height() * .32f, window = home)
+        val homePanel = find(home.window.decorView) { it.tag == "neon:page:HOME" }!!
+        main {
+            check(homePanel.visibility == View.VISIBLE && drawer.visibility == View.INVISIBLE, "Pull down at top did not return Home")
+            text(home, "GRID")!!.performClick()
+            check(drawer.translationY > 0f, "Grid tap did not start a sliding transition")
+        }
+        Thread.sleep(420)
+        main { check(drawer.visibility == View.VISIBLE && drawer.translationY == 0f, "Grid tap did not finish opening") }
+        val horizontalY = viewportBounds.top + viewportBounds.height() * .62f
+        swipe(viewportBounds.left + viewportBounds.width() * .74f, horizontalY, -viewportBounds.width()*.52f, 0f, window = home)
+        val status = find(home.window.decorView) { it.tag == "neon:page:STATUS" }!!
+        main {
+            check(status.visibility == View.VISIBLE && drawer.visibility == View.INVISIBLE, "Grid swipe did not skip ATLAS for Status")
+            check(find(status) { it is TextView && it.text.toString().startsWith("REDE /") } != null, "Status signals missing")
+        }
+        shot("v032-status")
+        swipe(viewportBounds.left + viewportBounds.width() * .74f, horizontalY, -viewportBounds.width()*.52f, 0f, window = home)
+        val config = find(home.window.decorView) { it.tag == "neon:page:CONFIG" }!!
+        main { check(config.visibility == View.VISIBLE && status.visibility == View.INVISIBLE, "Status swipe did not open Config") }
+        swipe(viewportBounds.left + viewportBounds.width() * .26f, horizontalY, viewportBounds.width()*.52f, 0f, window = home)
+        main { check(status.visibility == View.VISIBLE, "Right swipe did not return to Status") }
+        evidence.put("top_down_closes_grid", true).put("horizontal_tabs_skip_atlas", true)
+            .put("tap_animates_grid", true).put("weather_ring_rotates", true)
         evidence.put("swipe_up", true).put("drawer_follows_finger_before_release", true).put("short_drawer_swipe_returns_home", true).put("drawer_icons_visible_before_release", true)
         prefs.edit().putStringSet("favorites", savedFavorites).commit()
 
@@ -184,6 +218,38 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         check(draft.entries.size == 1, "Validated pack missing")
         val studio = open(IconStudioActivity::class.java) as IconStudioActivity
         shot("v2-icon-studio")
+        val targetZip = File(context.cacheDir, "neon-export-ci.zip").apply { delete() }
+        val picker = IntentFilter(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            addDataType("application/zip")
+        }
+        val pickerResult = Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.fromFile(targetZip)))
+        val monitor = test.addMonitor(picker, pickerResult, true)
+        try {
+            main {
+                check(text(studio, "SELECIONAR TODOS / LIMPAR")!!.performClick(), "Select all button missing")
+                check(text(studio, "EXPORTAR INVENTÁRIO")!!.performClick(), "Export button missing")
+            }
+            val deadline = SystemClock.elapsedRealtime() + 12000
+            while (SystemClock.elapsedRealtime() < deadline && !runCatching { ZipFile(targetZip).use { it.size() > 2 } }.getOrDefault(false)) {
+                Thread.sleep(120)
+            }
+            check(monitor.hits == 1, "Inventory picker was not reached")
+            ZipFile(targetZip).use { zip ->
+                val record = zip.getEntry("NEON_ICON_EXPORT/apps.json") ?: error("Export has no inventory")
+                val list = JSONObject(zip.getInputStream(record).reader().readText()).getJSONArray("apps")
+                check(list.length() == apps.take(250).size, "Exported ZIP lost apps in picker workflow")
+                for (i in 0 until list.length()) {
+                    val imagePath = "NEON_ICON_EXPORT/" + list.getJSONObject(i).getString("icon")
+                    check(zip.getEntry(imagePath)?.size?.let { it > 0 } == true, "Exported ZIP missing icon bytes")
+                }
+            }
+            targetZip.copyTo(File(directory, "NEON_ICON_EXPORT-via-picker.zip"), overwrite = true)
+        } finally {
+            test.removeMonitor(monitor)
+            targetZip.delete()
+        }
+        evidence.put("inventory_picker_writes_zip", true)
         main { studio.preview(draft) }
         shot("v2-icon-pack-preview")
         val oldIcons = prefs.getString("icon_overrides", null)
@@ -264,11 +330,11 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         test.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         main { layout.dissolve(folder, 0); selected.forEach { layout.move(it.key, 1) } }
         home = open(MainActivity::class.java, true)
-        swipe(home.window.decorView.width * .72f, home.window.decorView.height * .48f, -home.window.decorView.width * .5f, 0f)
         main {
-            check(text(home, "HOME / PÁGINA 2") != null, "Horizontal swipe did not change page")
             prefs.edit().putBoolean("home_edit", true).commit()
-            text(home, "HOME")!!.performClick()
+            val pageTwo = find(home.window.decorView) { it.contentDescription == "Página 2" }!!
+            check(pageTwo.performClick(), "Page two control unavailable")
+            check(text(home, "HOME / PÁGINA 2") != null, "Page two did not open")
         }
         test.waitForIdleSync()
         Thread.sleep(400)

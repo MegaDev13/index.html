@@ -75,6 +75,9 @@ class ArtView(context: Context, var accent: Int): View(context) {
 class AccessView(context: Context): View(context) {
     var accent=Color.CYAN; var effect=2; var intensity=.65f; var luminance=.8f
     private var progress=1f
+    var lockBackdrop: Bitmap? = null
+    private val backdropPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val backdropBounds = RectF()
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
     private var animation: ValueAnimator?=null
     init { importantForAccessibility=IMPORTANT_FOR_ACCESSIBILITY_NO; isClickable=false; isFocusable=false }
@@ -91,12 +94,58 @@ class AccessView(context: Context): View(context) {
     override fun onDraw(c: Canvas) {
         if(progress>=1f)return
         val w=width.toFloat();val h=height.toFloat();val t=progress
+        lockBackdrop?.let { bitmap ->
+            val scale = maxOf(w/bitmap.width, h/bitmap.height)
+            val dw = bitmap.width*scale
+            val dh = bitmap.height*scale
+            backdropBounds.set((w-dw)/2f,(h-dh)/2f,(w+dw)/2f,(h+dh)/2f)
+            backdropPaint.alpha = ((1f-t)*255f).toInt()
+            c.drawBitmap(bitmap,null,backdropBounds,backdropPaint)
+        }
         paint.color=accent;paint.alpha=((1-t)*190*luminance*(.35f+.65f*intensity)).toInt();paint.style=Paint.Style.STROKE;paint.strokeWidth=(1+intensity*2)*resources.displayMetrics.density
         when(effect) {
             0 -> for(i in 0..11) { val x=w*(i+1)/13; val yy=h*(.25f+(i%4)*.15f);c.drawLine(w*.5f,h*.5f,x,yy,paint);c.drawCircle(x,yy,3f+t*12,paint) }
             1 -> for(i in 0..7) { val yy=h*(i+.5f)/8;c.drawLine(w*((i%3)*.1f)*t,yy,w*(.6f+t*.4f),yy,paint) }
             2 -> for(i in 0..2)c.drawCircle(w*.5f,h*.57f,(t*w*.8f+i*w*.13f)*(0.5f+intensity*.5f),paint)
             3 -> {paint.style=Paint.Style.FILL;paint.typeface=Typeface.MONOSPACE;paint.textSize=16*resources.displayMetrics.scaledDensity;for(i in 0..8)for(j in 0..8)c.drawText(if((i+j)%2==0)"01" else "//",w*i/9,h*((j+t)/9),paint)}
+            5 -> {
+                val r = min(w, h) * .145f
+                val x = w/2f
+                val y = h/2f
+                c.drawRoundRect(x-r,y-r*.1f,x+r,y+r*1.05f,r*.2f,r*.2f,paint)
+                c.save()
+                c.rotate(-65f*t,x-r*.59f,y)
+                c.drawArc(x-r*.59f,y-r*1.02f,x+r*.59f,y+r*.15f,180f,180f,false,paint)
+                c.drawLine(x-r*.59f,y-r*.43f,x-r*.59f,y,paint)
+                c.drawLine(x+r*.59f,y-r*.43f,x+r*.59f,y-r*.14f,paint)
+                c.restore()
+                c.drawCircle(x,y+r*.39f,r*.13f,paint)
+                c.drawLine(x,y+r*.52f,x,y+r*.72f,paint)
+            }
+            6 -> {
+                val r = min(w, h) * .26f
+                val x = w/2f
+                val y = h/2f
+                c.drawCircle(x,y,r,paint)
+                c.drawCircle(x,y,r*.41f,paint)
+                c.drawCircle(x,y,r*.14f,paint)
+                for (i in 0..3) c.drawArc(x-r*1.12f,y-r*1.12f,x+r*1.12f,y+r*1.12f,i*90f+t*220f,48f,false,paint)
+                val dy = (t*2f-1f)*r
+                val half = sqrt((r*r-dy*dy).coerceAtLeast(0f))
+                c.drawLine(x-half,y+dy,x+half,y+dy,paint)
+            }
+            7 -> {
+                val x = w/2f
+                val y = h/2f
+                for (i in 1..7) {
+                    val r = w*(.035f*i + .07f*t)
+                    c.drawArc(x-r,y-r*1.35f,x+r,y+r*1.35f,22f+i*11f,280f-i*8f,false,paint)
+                }
+                val scanY = h*t
+                c.drawLine(0f,scanY,w,scanY,paint)
+                paint.alpha = (paint.alpha*.32f).toInt()
+                for (i in 1..7) c.drawLine(w*i/8f,0f,w*i/8f,h,paint)
+            }
             else -> { c.save(); c.translate(w*.5f,h*.5f);c.rotate(t*55);for(i in 0..3) {val r=w*(.12f+t*.6f+i*.06f);c.drawRect(-r,-r,r,r,paint)};c.restore() }
         }
     }

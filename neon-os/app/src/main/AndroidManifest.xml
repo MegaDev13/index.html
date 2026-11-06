@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <queries>
         <intent><action android:name="android.service.wallpaper.WallpaperService"/></intent>
         <package android:name="com.openai.chatgpt"/>
@@ -18,6 +19,7 @@
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
         </activity>
+        <activity android:name=".LockStudioActivity" android:exported="false"/>
         <activity android:name=".HudSettingsActivity" android:exported="false"/>
         <activity android:name=".IconStudioActivity" android:exported="false"/>
         <activity android:name=".WallpaperActivity" android:exported="false"/>
@@ -26,6 +28,11 @@
             android:exported="true" android:permission="android.permission.BIND_WALLPAPER">
             <intent-filter><action android:name="android.service.wallpaper.WallpaperService"/></intent-filter>
             <meta-data android:name="android.service.wallpaper" android:resource="@xml/neon_wallpaper"/>
+        </service>
+        <service android:name=".NeonKeyboard" android:label="Teclado NEON"
+            android:exported="true" android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter><action android:name="android.view.InputMethod"/></intent-filter>
+            <meta-data android:name="android.view.im" android:resource="@xml/neon_keyboard"/>
         </service>
         <activity android:name=".TerminalActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>

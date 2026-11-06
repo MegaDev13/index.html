@@ -50,7 +50,7 @@ class SmokeInstrumentation: Instrumentation() {
             }
             fun screenshot(name:String) {Thread.sleep(350);unobstructed();uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
             Thread.sleep(1300);waitForIdleSync()
-            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER","android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE","android.permission.RECORD_AUDIO","android.permission.ACCESS_COARSE_LOCATION","android.permission.BLUETOOTH_CONNECT"),"Unexpected permission")
+            check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER","android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE","android.permission.RECORD_AUDIO","android.permission.ACCESS_COARSE_LOCATION","android.permission.BLUETOOTH_CONNECT","android.permission.MODIFY_AUDIO_SETTINGS"),"Unexpected permission")
             onUi {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
             screenshot("01-home")
             click("GRID");onUi {check(find(window,"Aplicativos")!=null,"Grid title missing")};screenshot("02-grid")
@@ -66,7 +66,7 @@ class SmokeInstrumentation: Instrumentation() {
             };click("PRÉVIA DO EFEITO")
             onUi {(find(window,"Modo instantâneo") as Switch).isChecked=false}
             val measurement=Diagnostics(activity)
-            for(effect in 0..4) {
+            for(effect in Policy.effects.indices) {
                 onUi {
                     val view=AccessView(activity).apply {this.effect=effect}
                     val holder=window as ViewGroup;holder.addView(view,ViewGroup.LayoutParams(-1,-1));view.play(280)
@@ -76,7 +76,7 @@ class SmokeInstrumentation: Instrumentation() {
             }
             // Measure a separate pass with no screenshots, shell commands or sampling in the loop.
             onUi {measurement.start()}
-            for(effect in 0..4) {
+            for(effect in Policy.effects.indices) {
                 onUi {
                     val view=AccessView(activity).apply {this.effect=effect}
                     val holder=window as ViewGroup;holder.addView(view,ViewGroup.LayoutParams(-1,-1));view.play(280)

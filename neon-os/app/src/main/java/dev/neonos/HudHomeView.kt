@@ -1,6 +1,7 @@
 package dev.neonos
 
 import android.Manifest
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.bluetooth.BluetoothManager
 import android.content.Context
@@ -9,7 +10,6 @@ import android.graphics.*
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.PowerManager
-import android.provider.Settings
 import android.view.*
 import android.widget.*
 import java.text.SimpleDateFormat
@@ -95,6 +95,26 @@ class HudHomeView(
     private var charging = false
     private var phase = 0f
     private var chargeMotion: ValueAnimator? = null
+    private var ringMotion: ObjectAnimator? = null
+    private val ring = object : View(context) {
+        private val arcs = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = style.accent
+            style = Paint.Style.STROKE
+        }
+        private val bounds = RectF()
+        init {
+            tag = "neon:weather-ring"
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            val radius = minOf(w, h) * .46f
+            arcs.strokeWidth = minOf(w, h) * .032f
+            bounds.set(w/2f-radius, h/2f-radius, w/2f+radius, h/2f+radius)
+        }
+        override fun onDraw(canvas: Canvas) {
+            for (i in 0..3) canvas.drawArc(bounds, i*90f+12f, 46f, false, arcs)
+        }
+    }
     val world = WorldMapView(context)
     val dockViews = mutableListOf<ImageView>()
     val clock = label("—", 42f, style.text).apply { Themes.tag(this, "clock", style) }
@@ -126,6 +146,7 @@ class HudHomeView(
             city.setOnClickListener { route("weather") }
         }
         if (showRing) {
+            place(ring, 136f, 305f, 148f, 148f)
             place(temperature, 138f, 348f, 144f, 61f)
             place(condition, 98f, 451f, 224f, 37f)
             place(metrics, 86f, 490f, 248f, 42f)
@@ -214,7 +235,7 @@ class HudHomeView(
         charging = plugged
         battery.text = if (percent < 0) "BATERIA —" else "BATERIA  $percent%"
         power.text = when { percent < 0 -> "SEM LEITURA"; plugged && percent == 100 -> "CARGA COMPLETA"; plugged -> "CARREGANDO"; else -> "EM USO" }
-        syncChargeMotion()
+        syncMotion()
         invalidate()
     }
 
@@ -254,19 +275,33 @@ class HudHomeView(
 
     private fun updateJournal() { log.text = EventJournal.lines(2).ifBlank { "NEON TERMINAL / Sem eventos nesta sessão" } }
 
-    private fun syncChargeMotion() {
-        if (!charging || !isShown || !isAttachedToWindow || prefs.getString("performance", "balanced") != "full" ||
+    private fun syncMotion() {
+        if (!isShown || !isAttachedToWindow || windowVisibility != VISIBLE ||
             prefs.getBoolean("instant", false) || prefs.getBoolean("saver", false) ||
             context.getSystemService(PowerManager::class.java).isPowerSaveMode ||
-            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f) {
+            !ValueAnimator.areAnimatorsEnabled()
+        ) {
             stopMotion()
             return
         }
-        if (chargeMotion == null) chargeMotion = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1800
-            repeatCount = ValueAnimator.INFINITE
-            addUpdateListener { phase = it.animatedValue as Float; invalidate() }
-            start()
+        if (showRing && ringMotion == null) {
+            ringMotion = ObjectAnimator.ofFloat(ring, View.ROTATION, 0f, 360f).apply {
+                duration = 16_000
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = android.view.animation.LinearInterpolator()
+                start()
+            }
+        }
+        if (!charging || prefs.getString("performance", "balanced") != "full") {
+            chargeMotion?.cancel()
+            chargeMotion = null
+        } else if (chargeMotion == null) {
+            chargeMotion = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 1800
+                repeatCount = ValueAnimator.INFINITE
+                addUpdateListener { phase = it.animatedValue as Float; invalidate() }
+                start()
+            }
         }
     }
 
@@ -274,7 +309,16 @@ class HudHomeView(
         val rect=Rect()
         return boxes.any{(it.view.isClickable||it.view.isLongClickable)&&it.view.getGlobalVisibleRect(rect)&&rect.contains(x.toInt(),y.toInt())}
     }
-    fun stopMotion() { chargeMotion?.cancel(); chargeMotion = null }
+    fun stopMotion() {
+        chargeMotion?.cancel()
+        chargeMotion = null
+        ringMotion?.cancel()
+        ringMotion = null
+    }
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        if (isVisible) syncMotion() else stopMotion()
+    }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); EventJournal.observers.add(observe); updateJournal() }
     override fun onDetachedFromWindow() { EventJournal.observers.remove(observe); stopMotion(); super.onDetachedFromWindow() }
 
@@ -310,9 +354,6 @@ class HudHomeView(
             paint.strokeWidth = 2f
             canvas.drawCircle(210f, 379f, 70f, paint)
             canvas.drawCircle(210f, 379f, 60f, paint)
-            paint.alpha = 255
-            paint.strokeWidth = 5f
-            for (i in 0..3) canvas.drawArc(143f,312f,277f,446f,i*90f+12,46f,false,paint)
         }
         for (i in 0..6) {
             paint.alpha = if (chargeMotion != null && i == (phase * 7).toInt()) 255 else if (level >= 0 && i < ceil(level * 7 / 100.0)) 215 else 45

@@ -1,7 +1,7 @@
 package dev.neonos
 
 object Policy {
-    val effects = listOf("Neural Link", "Ghost Protocol", "Neon Pulse", "Cyber Matrix", "Quantum Gate")
+    val effects = listOf("Neural Link", "Ghost Protocol", "Neon Pulse", "Cyber Matrix", "Quantum Gate", "Cadeado abrindo", "Varredura ocular", "Análise digital")
     fun duration(requested: Int, instant: Boolean, saver: Boolean, systemAnimations: Boolean): Long =
         if (instant || saver || !systemAnimations) 0 else requested.coerceIn(200, 350).toLong()
     fun matches(label: String, query: String): Boolean = normalize(label).contains(normalize(query))

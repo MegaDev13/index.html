@@ -17,17 +17,23 @@ class IconStudioActivity : NeonPanel() {
     private val selected = mutableSetOf<String>()
     private var imageTarget: String? = null
     private lateinit var inventory: ListView
+    private lateinit var exportButton: TextView
+    private var pendingInventory: File? = null
+    private var pendingCount = 0
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         imageTarget = state?.getString("iconTarget")
+        selected.addAll(state?.getStringArrayList("inventorySelection").orEmpty())
+        pendingInventory = state?.getString("inventoryDraft")
+            ?.takeIf { it.matches(Regex("neon-inventory-[0-9]+\\.zip")) }
+            ?.let { File(cacheDir, it) }
+        pendingCount = state?.getInt("inventoryCount") ?: 0
         screen("NEON ICON STUDIO")
         add(text("Selecione apps para o inventário ZIP. Toque no nome de um app para personalizar seu ícone.", 13f))
-        add(button("EXPORTAR INVENTÁRIO") {
-            if (selected.size !in 1..250) message("Selecione entre 1 e 250 apps.")
-            else startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/zip")
-                .addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "NEON_ICON_EXPORT.zip"), 401)
-        })
+        exportButton = button("EXPORTAR INVENTÁRIO") { prepareInventory() }
+        exportButton.isEnabled = pendingInventory == null
+        add(exportButton)
         add(button("IMPORTAR PACOTE ZIP") {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip").addCategory(Intent.CATEGORY_OPENABLE), 402)
         })
@@ -55,7 +61,85 @@ class IconStudioActivity : NeonPanel() {
 
     override fun onSaveInstanceState(state: Bundle) {
         state.putString("iconTarget", imageTarget)
+        state.putStringArrayList("inventorySelection", ArrayList(selected))
+        state.putString("inventoryDraft", pendingInventory?.name)
+        state.putInt("inventoryCount", pendingCount)
         super.onSaveInstanceState(state)
+    }
+
+    private fun prepareInventory() {
+        val entries = apps.filter { it.key in selected }
+        if (entries.size !in 1..250) {
+            message("Selecione entre 1 e 250 apps carregados.")
+            return
+        }
+        exportButton.isEnabled = false
+        worker.execute {
+            val result = runCatching {
+                val file = File.createTempFile("neon-inventory-", ".zip", cacheDir)
+                try {
+                    val count = file.outputStream().use { store.export(it, entries) }
+                    check(count == entries.size && file.length() > 0) { "Inventário incompleto." }
+                    file to count
+                } catch (error: Exception) {
+                    file.delete()
+                    throw error
+                }
+            }
+            ui.post {
+                if (isDestroyed || isFinishing) {
+                    result.getOrNull()?.first?.delete()
+                    return@post
+                }
+                result.onSuccess { (file, count) ->
+                    pendingInventory = file
+                    pendingCount = count
+                    try {
+                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/zip")
+                            .addCategory(Intent.CATEGORY_OPENABLE)
+                            .putExtra(Intent.EXTRA_TITLE, "NEON_ICON_EXPORT.zip"), 401)
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        pendingInventory = null
+                        file.delete()
+                        exportButton.isEnabled = true
+                        message("Seletor de arquivos indisponível.")
+                    }
+                }.onFailure {
+                    exportButton.isEnabled = true
+                    message(it.message ?: "Não foi possível preparar o inventário.")
+                }
+            }
+        }
+    }
+
+    private fun saveInventory(destination: android.net.Uri?) {
+        val file = pendingInventory
+        val count = pendingCount
+        pendingInventory = null
+        pendingCount = 0
+        if (destination == null) {
+            file?.delete()
+            exportButton.isEnabled = true
+            return
+        }
+        worker.execute {
+            val result = runCatching {
+                check(file != null && file.length() > 0 && count > 0) {
+                    "O inventário preparado expirou. Gere o ZIP novamente."
+                }
+                val size = file.length()
+                val written = file.inputStream().use { input ->
+                    contentResolver.openOutputStream(destination, "wt")?.use { input.copyTo(it) }
+                        ?: error("Destino indisponível.")
+                }
+                check(written == size) { "Gravação incompleta. Escolha outro destino." }
+            }
+            file?.delete()
+            whenAlive {
+                exportButton.isEnabled = true
+                message(result.exceptionOrNull()?.message ?: "Inventário exportado com $count apps.")
+            }
+        }
     }
 
     private fun choices() {
@@ -130,18 +214,17 @@ class IconStudioActivity : NeonPanel() {
 
     override fun onActivityResult(request: Int, result: Int, data: Intent?) {
         super.onActivityResult(request, result, data)
+        if (request == 401) {
+            saveInventory(data?.data.takeIf { result == RESULT_OK })
+            return
+        }
         val uri = data?.data ?: return
         if (result != RESULT_OK) return
-        val entries = apps.filter { it.key in selected }
         val target = imageTarget
         val theme = style.id
         worker.execute {
             try {
                 when (request) {
-                    401 -> {
-                        val count = contentResolver.openOutputStream(uri)?.use { store.export(it, entries) } ?: error("Destino indisponível.")
-                        whenAlive { message("Inventário exportado com $count apps.") }
-                    }
                     402 -> {
                         val draft = contentResolver.openInputStream(uri)?.use { store.stage(it) } ?: error("Arquivo indisponível.")
                         whenAlive { preview(draft) }

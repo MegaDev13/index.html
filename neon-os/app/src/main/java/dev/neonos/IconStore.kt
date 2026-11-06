@@ -238,7 +238,8 @@ class IconStore(private val context: Context) {
         val manifest = JSONArray()
         ZipOutputStream(output).use { zip ->
             for (app in apps) {
-                val icon = repository.icon(app) ?: continue
+                val original = runCatching { repository.icon(app) }.getOrNull()
+                val icon = original ?: context.packageManager.defaultActivityIcon
                 val name = "icons/${digest(app.key.toByteArray())}.png"
                 val bitmap = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
                 try {
@@ -250,6 +251,7 @@ class IconStore(private val context: Context) {
                 } finally { bitmap.recycle() }
                 manifest.put(JSONObject().put("name", app.label).put("package", app.component.packageName)
                     .put("component", app.component.flattenToString()).put("profile", app.serial).put("icon", name)
+                    .put("icon_source", if (original != null) "original" else "android_default")
                     .put("theme", theme).put("custom_state", state(app, theme)))
             }
             val data = JSONObject().put("version", 1).put("apps", manifest).toString(2)

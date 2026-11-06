@@ -1,5 +1,8 @@
 package dev.neonos
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.app.*
 import android.app.role.RoleManager
 import android.appwidget.*
@@ -30,17 +33,43 @@ class MainActivity: Activity() {
     private val io=Executors.newSingleThreadExecutor()
     private val handler=Handler(Looper.getMainLooper())
     private val iconCache=android.util.LruCache<String,android.graphics.drawable.Drawable>(80)
-    private var apps=emptyList<AppEntry>();private var page="HOME";private var query="";private var category=-2
-    private lateinit var root: FrameLayout;private lateinit var column: LinearLayout;private lateinit var body: LinearLayout
+    private var apps=emptyList<AppEntry>();private var query="";private var category=-2
+    private lateinit var root: FrameLayout
+    private lateinit var column: LinearLayout
+    private class Surface(val name: String, val frame: FrameLayout, val scroll: ScrollView,
+                          val body: LinearLayout, val art: ArtView) {
+        var hud: HudHomeView? = null
+        var clock: TextView? = null
+        var date: TextView? = null
+        var battery: TextView? = null
+        var atlas: TextView? = null
+        var search: EditText? = null
+        var grid: LinearLayout? = null
+        var signals: TextView? = null
+        var batteryBar: ProgressBar? = null
+    }
+    private lateinit var active: Surface
+    private var building: Surface? = null
+    private val surfaces = linkedMapOf<String, Surface>()
+    private val tabs = listOf("HOME", "GRID", "STATUS", "CONFIG")
+    private val surface get() = building ?: active
+    private val body get() = surface.body
+    private val page get() = active.name
+    private data class Transition(val from: Surface, val to: Surface, val vertical: Boolean,
+                                  val direction: Int, val span: Float, var progress: Float = 0f)
+    private var transition: Transition? = null
+    private var settling: ValueAnimator? = null
+    private var settleToTarget = false
+    private var gestureVelocity: VelocityTracker? = null
+    private var canCloseGrid = false
+    private var appsChangedDuringTransition = false
     private lateinit var access: AccessView;private lateinit var art: ArtView
     private lateinit var diagnostics: Diagnostics
-    private var clock: TextView?=null;private var date: TextView?=null;private var battery: TextView?=null
-    private var atlasHomeButton:TextView?=null
-    private var hud:HudHomeView?=null
+    private val hud get() = surface.hud
     private val homeLayout by lazy { HomeLayout(this) }
     private var homePage=0
-    private var lastHomePage=0
     private var wallpaperKey=""
+    private var lockCoverKey = ""
     private data class AppDrag(val key: String, val tile: View)
     private var appDrag: AppDrag? = null
     private var dragCandidate: AppDrag? = null
@@ -52,14 +81,8 @@ class MainActivity: Activity() {
     private var touchInBody=false
     private var pinchHandled=false
     private var doubleTap=false
-    private var gridSearch:EditText?=null
     private lateinit var viewport: FrameLayout
-    private lateinit var pageScroll: ScrollView
     private val navTabs = mutableMapOf<String, TextView>()
-    private var drawerPanel: FrameLayout? = null
-    private var drawerDragging = false
-    private var drawerVelocity: VelocityTracker? = null
-    private var refreshAfterDrawer = false
     private val drawerDragSources = linkedMapOf<View, String>()
     private val drawerDropTargets = linkedMapOf<View, (String) -> Unit>()
     private val tapDetector by lazy {
@@ -90,7 +113,7 @@ class MainActivity: Activity() {
     private var weatherBusy=false
     private var weatherGeneration=0
     private var weatherFailed=false
-    private var gridBody: LinearLayout?=null;private var batteryLevel=-1
+    private var batteryLevel=-1
     private var resumed=false;private var sessionGeneration=0
     private val gate=UnlockGate()
     private val widgetHost by lazy { AppWidgetHost(this,7161) }
@@ -105,7 +128,7 @@ class MainActivity: Activity() {
     private val muted:Int get()=theme.muted
     private val tick=object: Runnable {override fun run() {if(!resumed)return;updateClock();refreshWeather();handler.postDelayed(this,60000-System.currentTimeMillis()%60000)}}
     private val networkCallback=object:android.net.ConnectivityManager.NetworkCallback(){override fun onAvailable(network:android.net.Network){handler.post{if(resumed)networkChanged()}};override fun onLost(network:android.net.Network){handler.post{if(resumed)networkChanged()}}}
-    private fun updateAtlasState(){hud?.updateClockAndNetwork();if(hud!=null)return;val mode=if(prefs.getBoolean("atlas_integrated",false))"INTEGRADO"else"CHATGPT OFICIAL";val online=AtlasApi(this).connected();atlasHomeButton?.text="ATLAS\n$mode / ${if(online)"REDE DISPONÍVEL"else"OFFLINE"}"}
+    private fun updateAtlasState(){hud?.updateClockAndNetwork();if(hud!=null)return;val mode=if(prefs.getBoolean("atlas_integrated",false))"INTEGRADO"else"CHATGPT OFICIAL";val online=AtlasApi(this).connected();surface.atlas?.text="ATLAS\n$mode / ${if(online)"REDE DISPONÍVEL"else"OFFLINE"}"}
     private val broadcast=object: BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             when(i.action) {
@@ -117,10 +140,14 @@ class MainActivity: Activity() {
                     if(connected!=plugged)EventJournal.record("POWER",if(connected)"Carregador conectado" else "Carregador desconectado")
                     batteryLevel=next
                     plugged=connected
-                    battery?.text=if(next>=0)"BATERIA  $next%" else "BATERIA  —"
+                    surface.battery?.text=if(next>=0)"BATERIA  $next%" else "BATERIA  —"
                     hud?.updateBattery(next,connected)
+                    updateStatus()
                 }
-                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> updateRefresh()
+                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
+                    updateRefresh()
+                    hud?.updateBattery(batteryLevel, plugged)
+                }
                 Intent.ACTION_SCREEN_OFF -> gate.observeLocked()
                 Intent.ACTION_USER_PRESENT -> {gate.userPresent(SystemClock.elapsedRealtime());maybeAccess()}
                 Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED -> updateClock()
@@ -164,13 +191,17 @@ class MainActivity: Activity() {
         getSystemService(LauncherApps::class.java).registerCallback(packageCallback,handler)
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
-    override fun onResume() {super.onResume();if(drawnTheme!=theme.id||uiSettingsHash!=prefs.all.hashCode())show(page);updateRefresh();resumed=true;EventJournal.record("LAUNCHER","Ativo");networkChanged();updateClock();hud?.updateBattery(batteryLevel,plugged);handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
-    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;clearAppDrag();if(drawerDragging)finishDrawer(false, animate=false);clearDrawerVelocity();handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
+    override fun onResume() {super.onResume();applyNeonBrightness(this);refreshLockBackdrop();if(drawnTheme!=theme.id||uiSettingsHash!=prefs.all.hashCode())show(page);updateRefresh();resumed=true;EventJournal.record("LAUNCHER","Ativo");networkChanged();updateClock();hud?.updateBattery(batteryLevel,plugged);handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
+    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;clearAppDrag();transition?.let { completeTransition(it, settleToTarget) };clearGestureVelocity();handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
     override fun onStop() {TerminalWidget.refresh(this);getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;weatherWorker.shutdownNow();io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else if(intent.hasCategory(Intent.CATEGORY_HOME)){homePage=0;show("HOME")}}
-    override fun onBackPressed() {if(page!="HOME"||homePage!=0){homePage=0;show("HOME")} else if(!isDefaultHome())super.onBackPressed()}
+    override fun onBackPressed() {
+        if (page != "HOME") navigate("HOME")
+        else if (homePage != 0) { homePage = 0; show("HOME") }
+        else if (!isDefaultHome()) super.onBackPressed()
+    }
     private fun openAtlas() {startActivity(Intent(this,AtlasActivity::class.java))}
     private fun dp(v: Int)=(v*resources.displayMetrics.density).toInt()
     private fun isDefaultHome(): Boolean = getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_HOME)
@@ -180,128 +211,211 @@ class MainActivity: Activity() {
     private fun add(view: View,parent: LinearLayout=body,weight: Float=0f) {parent.addView(view,LinearLayout.LayoutParams(if(weight>0)0 else -1,if(weight>0)-1 else -2,weight).apply {bottomMargin=dp(10)})}
     private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
+        transition = null
+        settling?.cancel()
+        settling = null
         clearAppDrag()
-        clearDrawerVelocity()
-        drawerPanel?.animate()?.cancel()
-        if (::pageScroll.isInitialized) pageScroll.animate().cancel()
-        drawerPanel = null
-        drawerDragging = false
-        refreshAfterDrawer = false
+        clearGestureVelocity()
+        appsChangedDuringTransition = false
         dragSources.clear()
         dropTargets.clear()
         drawerDragSources.clear()
         drawerDropTargets.clear()
         navTabs.clear()
-        val animate=page!=target||lastHomePage!=homePage
-        lastHomePage=homePage;gridSearch=null;uiSettingsHash=prefs.all.hashCode();hud?.stopMotion();hud=null;page=target;art.hudMode=target=="HOME";drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
-        val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
-        header.addView(mono(when(theme.id){Themes.TERMINAL->">_ NEON";Themes.CORPORATE->"NEON / INDUSTRIES";else->"N / OS"},14f),LinearLayout.LayoutParams(0,-2,1f));header.addView(mono(if(isDefaultHome())"LAUNCHER" else "COMPANION",9f,muted));column.addView(header)
+        surfaces.values.forEach { it.hud?.stopMotion() }
+        surfaces.clear()
+        uiSettingsHash = prefs.all.hashCode()
+        drawnTheme = theme.id
+        art.hudMode = true
+        art.themeId = theme.id
+        art.accent = accent
+        art.invalidate()
+        Themes.tag(root, "root", theme)
+        column.removeAllViews()
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val brand = when (theme.id) {
+            Themes.TERMINAL -> ">_ NEON"
+            Themes.CORPORATE -> "NEON / INDUSTRIES"
+            else -> "N / OS"
+        }
+        header.addView(mono(brand,14f), LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(mono(if (isDefaultHome()) "LAUNCHER" else "COMPANION",9f,muted))
+        column.addView(header)
         viewport = FrameLayout(this)
-        pageScroll = ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = target == "GRID" }
-        body = scrollBody(pageScroll)
-        viewport.addView(pageScroll, FrameLayout.LayoutParams(-1, -1))
-        column.addView(viewport, LinearLayout.LayoutParams(-1, 0, 1f))
-        when(target) {"HOME"->home();"GRID"->grid(body, query);"STATUS"->status();else->config()}
+        column.addView(viewport, LinearLayout.LayoutParams(-1,0,1f))
+        active = surfaceFor(target)
+        active.frame.visibility = View.VISIBLE
         refreshWallpaper()
-        if(animate&&motionEnabled()){
-            body.alpha=.6f
-            body.translationY=dp(15).toFloat()
-            body.animate().alpha(1f).translationY(0f).setDuration(240)
-                .setInterpolator { progress -> if(progress>=1f)1f else (1-Math.exp(-7.0*progress)*Math.cos(10.0*progress)).toFloat() }.start()
+
+        val nav = LinearLayout(this).apply { setPadding(0,dp(8),0,dp(8)); gravity = Gravity.CENTER }
+        for (name in listOf("HOME", "GRID", "ATLAS", "STATUS", "CONFIG")) {
+            val tab = label(name,12f,if(name==page)accent else muted).apply {
+                gravity = Gravity.CENTER
+                setPadding(0,dp(15),0,dp(15))
+                typeface = Typeface.MONOSPACE
+                isFocusable = true
+                setOnClickListener {
+                    if (name == "ATLAS") startActivity(Intent(this@MainActivity, AtlasEntryActivity::class.java))
+                    else navigate(name)
+                }
+                setOnLongClickListener { if (name == "ATLAS") { openAtlas(); true } else false }
+                Themes.tag(this,"dock",theme)
+            }
+            navTabs[name] = tab
+            nav.addView(tab, LinearLayout.LayoutParams(0,-2,1f))
         }
-        val nav=LinearLayout(this).apply {setPadding(0,dp(8),0,dp(8));gravity=Gravity.CENTER}
-        for(name in listOf("HOME","GRID","ATLAS","STATUS","CONFIG")) {val b=label(name,12f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {if(name=="ATLAS")startActivity(Intent(this@MainActivity,AtlasEntryActivity::class.java))else show(name)};setOnLongClickListener {if(name=="ATLAS"){openAtlas();true}else false};Themes.tag(this,"dock",theme)};navTabs[name]=b;nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
-        if (target == "HOME" && hud != null && !prefs.getBoolean("home_edit", false)) {
-            val host = viewport
-            host.post { if (viewport === host && page == "HOME" && !isDestroyed) prepareDrawer() }
-        }
+        column.addView(nav)
+        warmNeighbors()
     }
 
-    private fun scrollBody(scroll: ScrollView) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(0, dp(16), 0, dp(14))
-        scroll.addView(this)
-    }
-
-    private fun prepareDrawer(): FrameLayout {
-        drawerPanel?.let { return it }
-        val sheet = FrameLayout(this).apply {
+    private fun surfaceFor(target: String): Surface {
+        surfaces[target]?.let { return it }
+        val frame = FrameLayout(this).apply {
             visibility = View.INVISIBLE
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-            tag = "neon:swipe-drawer"
+            tag = "neon:page:$target"
         }
-        sheet.addView(ArtView(this, accent).apply {
+        val backdrop = ArtView(this, accent).apply {
+            hudMode = target == "HOME"
             systemWallpaper = art.systemWallpaper
             wallpaperImage = art.wallpaperImage
-        }, FrameLayout.LayoutParams(-1, -1))
-        val scroll = ScrollView(this).apply { isFillViewport = true }
-        grid(scrollBody(scroll), "")
-        sheet.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        drawerPanel = sheet
-        viewport.addView(sheet, FrameLayout.LayoutParams(-1, -1))
-        return sheet
-    }
-
-    private fun clearDrawerVelocity() {
-        drawerVelocity?.recycle()
-        drawerVelocity = null
-    }
-
-    private fun finishDrawer(open: Boolean, animate: Boolean = motionEnabled()) {
-        val sheet = drawerPanel ?: return
-        drawerDragging = false
-        clearDrawerVelocity()
-        if (open) {
-            query = ""
-            page = "GRID"
-            navTabs.forEach { (name, tab) -> tab.setTextColor(if (name == page) accent else muted) }
-            pageScroll.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-            sheet.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         }
-        val height = viewport.height.toFloat()
-        val end = if (open) 0f else height
-        val homeEnd = end - height
-        val settle: () -> Unit = {
-            if (open) {
-                pageScroll.visibility = View.INVISIBLE
-                hud?.stopMotion()
-            } else sheet.visibility = View.INVISIBLE
-            if (refreshAfterDrawer) {
-                refreshAfterDrawer = false
-                if (open) renderGrid() else show("HOME")
+        val scroll = ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = target == "GRID" }
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0,dp(16),0,dp(14)) }
+        scroll.addView(content)
+        frame.addView(backdrop, FrameLayout.LayoutParams(-1,-1))
+        frame.addView(scroll, FrameLayout.LayoutParams(-1,-1))
+        val view = Surface(target, frame, scroll, content, backdrop)
+        building = view
+        try {
+            when (target) {
+                "HOME" -> home()
+                "GRID" -> grid(content, query)
+                "STATUS" -> status()
+                else -> config()
+            }
+        } finally { building = null }
+        surfaces[target] = view
+        viewport.addView(frame, FrameLayout.LayoutParams(-1,-1))
+        return view
+    }
+
+    private fun warmNeighbors() {
+        val host = viewport
+        val current = active
+        val index = tabs.indexOf(current.name)
+        for (name in listOfNotNull(tabs.getOrNull(index - 1), tabs.getOrNull(index + 1))) {
+            host.post {
+                if (viewport === host && active === current && transition == null && !isDestroyed) surfaceFor(name)
             }
         }
-        if (animate && height > 0f && abs(sheet.translationY - end) > 1f) {
-            val duration = (70f + 110f * abs(sheet.translationY - end) / height).toLong()
-            val interpolator = DecelerateInterpolator()
-            pageScroll.animate().translationY(homeEnd).setDuration(duration).setInterpolator(interpolator).start()
-            sheet.animate().translationY(end).setDuration(duration)
-                .setInterpolator(interpolator).withEndAction { settle() }.start()
+    }
+
+    private fun clearGestureVelocity() {
+        gestureVelocity?.recycle()
+        gestureVelocity = null
+    }
+
+    private fun beginTransition(target: String, vertical: Boolean, direction: Int): Transition? {
+        val span = (if (vertical) viewport.height else viewport.width).toFloat()
+        if (span <= 0f) return null
+        return Transition(active, surfaceFor(target), vertical, direction, span).also { move ->
+            transition = move
+            settleToTarget = false
+            move.to.frame.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            positionTransition(move, 0f)
+            move.to.frame.visibility = View.VISIBLE
+            move.to.frame.bringToFront()
+        }
+    }
+
+    private fun positionTransition(move: Transition, progress: Float) {
+        val p = progress.coerceIn(0f, 1f)
+        move.progress = p
+        val from = -move.direction * p * move.span
+        val to = move.direction * (1f - p) * move.span
+        if (move.vertical) {
+            move.from.frame.translationY = from
+            move.to.frame.translationY = to
         } else {
-            sheet.translationY = end
-            pageScroll.translationY = homeEnd
-            settle()
+            move.from.frame.translationX = from
+            move.to.frame.translationX = to
         }
     }
 
-    private fun dragDrawer(event: MotionEvent): Boolean {
-        val sheet = drawerPanel ?: return false
-        drawerVelocity?.addMovement(event)
+    private fun completeTransition(move: Transition, commit: Boolean) {
+        if (transition !== move) return
+        transition = null
+        settling?.cancel()
+        settling = null
+        clearGestureVelocity()
+        val selected = if (commit) move.to else move.from
+        val hidden = if (commit) move.from else move.to
+        hidden.frame.visibility = View.INVISIBLE
+        hidden.hud?.stopMotion()
+        for (view in listOf(move.from.frame, move.to.frame)) {
+            view.translationX = 0f
+            view.translationY = 0f
+        }
+        selected.frame.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        active = selected
+        navTabs.forEach { (name, tab) -> tab.setTextColor(if (name == page) accent else muted) }
+        updateClock()
+        renderWeather()
+        hud?.updateBattery(batteryLevel, plugged)
+        updateStatus()
+        if (appsChangedDuringTransition) {
+            appsChangedDuringTransition = false
+            refreshAppSurfaces()
+        }
+        warmNeighbors()
+    }
+
+    private fun settleTransition(move: Transition, commit: Boolean) {
+        clearGestureVelocity()
+        settleToTarget = commit
+        val end = if (commit) 1f else 0f
+        if (!motionEnabled() || abs(move.progress - end) < .001f) {
+            completeTransition(move, commit)
+            return
+        }
+        settling = ValueAnimator.ofFloat(move.progress, end).apply {
+            duration = (80f + 180f * abs(move.progress - end)).toLong()
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { positionTransition(move, it.animatedValue as Float) }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (transition === move) completeTransition(move, commit)
+                }
+            })
+            start()
+        }
+    }
+
+    private fun navigate(target: String) {
+        transition?.let { completeTransition(it, settleToTarget) }
+        if (target == page) return
+        val vertical = (page == "HOME" && target == "GRID") || (page == "GRID" && target == "HOME")
+        val direction = if (tabs.indexOf(target) > tabs.indexOf(page)) 1 else -1
+        val move = beginTransition(target, vertical, direction)
+        if (move == null) show(target) else settleTransition(move, true)
+    }
+
+    private fun dragTransition(event: MotionEvent, move: Transition): Boolean {
+        gestureVelocity?.addMovement(event)
+        val delta = if (move.vertical) event.y - touchY else event.x - touchX
+        val travel = -delta * move.direction
         when (event.actionMasked) {
-            MotionEvent.ACTION_MOVE -> {
-                val height = viewport.height.toFloat()
-                val reveal = (touchY - event.y).coerceIn(0f, height)
-                sheet.translationY = height - reveal
-                pageScroll.translationY = -reveal
-            }
+            MotionEvent.ACTION_MOVE -> positionTransition(move, travel / move.span)
             MotionEvent.ACTION_UP -> {
-                val travel = (touchY - event.y).coerceAtLeast(0f)
-                val velocity = drawerVelocity?.let { it.computeCurrentVelocity(1000); it.yVelocity } ?: 0f
-                val open = travel >= minOf(viewport.height * .28f, dp(160).toFloat()) ||
-                    (travel >= dp(24) && velocity < -dp(700))
-                finishDrawer(open)
+                val velocity = gestureVelocity?.let {
+                    it.computeCurrentVelocity(1000)
+                    if (move.vertical) it.yVelocity else it.xVelocity
+                } ?: 0f
+                val commit = travel >= minOf(move.span * .28f, dp(160).toFloat()) ||
+                    (travel >= dp(24) && -velocity * move.direction > dp(700))
+                settleTransition(move, commit)
             }
-            MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> finishDrawer(false)
+            MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> settleTransition(move, false)
         }
         return true
     }
@@ -320,7 +434,7 @@ class MainActivity: Activity() {
         }
         val chosen=selected.ifEmpty{if(homeLayout.configured)emptyList() else apps.filter{it.component.packageName!=packageName}.take(8)}
         val view=HudHomeView(this,chosen,::loadHudIcon,::launchApp,::appMenu,::hudRoute,::hudDock)
-        hud=view
+        surface.hud=view
         for((index,icon) in view.dockViews.withIndex()) {
             val app=apps.firstOrNull { it.key==prefs.getString("dock_$index",null) }
             if(app!=null){icon.contentDescription="Dock / ${app.label}";loadHudIcon(app,icon)}
@@ -352,7 +466,7 @@ class MainActivity: Activity() {
             pages.addView(tab,LinearLayout.LayoutParams(0,dp(48),1f))
         }
         add(pages)
-        add(button("TODOS OS APLICATIVOS  ↗"){show("GRID")})
+        add(button("TODOS OS APLICATIVOS  ↗"){navigate("GRID")})
         shortcuts()
         widgetViews()
     }
@@ -410,13 +524,13 @@ class MainActivity: Activity() {
         }
         val key=prefs.getString("dock_$index",null)
         apps.firstOrNull{it.key==key}?.let{launchApp(it);return}
-        when(key){"atlas"->{hudRoute("atlas");return};"grid"->{show("GRID");return};"config"->{show("CONFIG");return}}
+        when(key){"atlas"->{hudRoute("atlas");return};"grid"->{navigate("GRID");return};"config"->{navigate("CONFIG");return}}
         when(index) {
             0->safeStart(Intent(Intent.ACTION_DIAL))
             1->safeStart(Intent(Intent.ACTION_SENDTO,Uri.parse("sms:")))
-            2->show("GRID")
+            2->navigate("GRID")
             3->hudRoute("atlas")
-            else->show("CONFIG")
+            else->navigate("CONFIG")
         }
     }
     private fun motionEnabled()=android.animation.ValueAnimator.areAnimatorsEnabled()&&
@@ -425,9 +539,9 @@ class MainActivity: Activity() {
         val bounds=Rect()
         return view.getGlobalVisibleRect(bounds)&&bounds.contains(x.toInt(),y.toInt())
     }
-    private fun touchesWidget(view:View,x:Float,y:Float):Boolean {
-        if(view is AppWidgetHostView)return inside(view,x,y)
-        if(view is ViewGroup)for(index in 0 until view.childCount)if(touchesWidget(view.getChildAt(index),x,y))return true
+    private fun blocksTabGesture(view:View,x:Float,y:Float):Boolean {
+        if(view is AppWidgetHostView || view is EditText || view is SeekBar || view is Spinner) return inside(view,x,y)
+        if(view is ViewGroup)for(index in 0 until view.childCount)if(blocksTabGesture(view.getChildAt(index),x,y))return true
         return false
     }
     private fun clearAppDrag() {
@@ -462,107 +576,110 @@ class MainActivity: Activity() {
         return true
     }
 
-    override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         appDrag?.let { return handleAppDrag(event, it) }
-        if (drawerDragging) return dragDrawer(event)
+        transition?.let { move ->
+            if (settling == null) return dragTransition(event, move)
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) completeTransition(move, settleToTarget)
+        }
         val sources = if (page == "GRID") drawerDragSources else dragSources
-        when (event.actionMasked) {
+        val action = event.actionMasked
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
+        when (action) {
             MotionEvent.ACTION_DOWN -> {
                 touchX = event.x
                 touchY = event.y
                 dragCandidate = sources.entries.firstOrNull { (view, _) ->
                     inside(view, event.rawX, event.rawY)
                 }?.let { (view, key) -> AppDrag(key, view) }
+                val homeEdit = page == "HOME" && prefs.getBoolean("home_edit", false)
+                touchInHud = page == "HOME" && !homeEdit && hud?.let { inside(it, touchX, touchY) } == true
+                touchInBody = !homeEdit && inside(viewport, touchX, touchY) &&
+                    !blocksTabGesture(body, touchX, touchY)
+                canCloseGrid = page == "GRID" && active.scroll.scrollY == 0
+                pinchHandled = false
+                clearGestureVelocity()
+                if (touchInBody) gestureVelocity = VelocityTracker.obtain().also { it.addMovement(event) }
             }
             MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - touchX
+                val dy = event.y - touchY
                 val candidate = dragCandidate
-                if (candidate != null && candidate.tile.isAttachedToWindow) {
-                    val slop = ViewConfiguration.get(this).scaledTouchSlop
-                    if (abs(event.x - touchX) > slop || abs(event.y - touchY) > slop) {
-                        dragCandidate = null
-                        if (event.eventTime - event.downTime >= ViewConfiguration.getLongPressTimeout()) {
-                            appDrag = candidate
-                            candidate.tile.alpha = .65f
-                            candidate.tile.translationZ = dp(8).toFloat()
-                            return handleAppDrag(event, candidate)
-                        }
+                if (candidate != null && candidate.tile.isAttachedToWindow &&
+                    (abs(dx) > slop || abs(dy) > slop)
+                ) {
+                    dragCandidate = null
+                    if (event.eventTime - event.downTime >= ViewConfiguration.getLongPressTimeout()) {
+                        appDrag = candidate
+                        candidate.tile.alpha = .65f
+                        candidate.tile.translationZ = dp(8).toFloat()
+                        return handleAppDrag(event, candidate)
                     }
                 }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> dragCandidate = null
-        }
-        if(page!="HOME"||prefs.getBoolean("home_edit",false))return super.dispatchTouchEvent(event)
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            touchInHud = hud?.let { inside(it, touchX, touchY) } == true
-            touchInBody = inside(body, touchX, touchY) && !touchesWidget(body, touchX, touchY)
-            pinchHandled = false
-            clearDrawerVelocity()
-            if (touchInHud && touchInBody) drawerVelocity = VelocityTracker.obtain().also { it.addMovement(event) }
-        }
-        val dx = event.x - touchX
-        val dy = event.y - touchY
-        if (event.actionMasked == MotionEvent.ACTION_MOVE && drawerVelocity != null) {
-            if (!pinchHandled && event.pointerCount == 1 && -dy > ViewConfiguration.get(this).scaledTouchSlop &&
-                -dy > abs(dx) * 1.35f && viewport.height > 0
-            ) {
-                val sheet = prepareDrawer()
-                val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
-                try {
-                    super.dispatchTouchEvent(cancel)
-                    tapDetector.onTouchEvent(cancel)
-                    pinchDetector.onTouchEvent(cancel)
-                } finally {
-                    cancel.recycle()
+                if (gestureVelocity != null && !pinchHandled && event.pointerCount == 1) {
+                    val direction = if (dx < 0f) 1 else -1
+                    val move = when {
+                        abs(dx) > slop && abs(dx) > abs(dy) * 1.35f ->
+                            tabs.getOrNull(tabs.indexOf(page) + direction)?.let { beginTransition(it, false, direction) }
+                        touchInHud && -dy > slop && -dy > abs(dx) * 1.35f -> {
+                            surfaces["GRID"]?.search?.takeIf { it.text.isNotEmpty() }?.setText("")
+                            query = ""
+                            beginTransition("GRID", true, 1)
+                        }
+                        canCloseGrid && dy > slop && dy > abs(dx) * 1.35f -> beginTransition("HOME", true, -1)
+                        else -> null
+                    }
+                    if (move != null) {
+                        val cancel = MotionEvent.obtain(event).apply { this.action = MotionEvent.ACTION_CANCEL }
+                        try {
+                            super.dispatchTouchEvent(cancel)
+                            if (touchInHud) {
+                                tapDetector.onTouchEvent(cancel)
+                                pinchDetector.onTouchEvent(cancel)
+                            }
+                        } finally { cancel.recycle() }
+                        doubleTap = false
+                        touchInHud = false
+                        touchInBody = false
+                        return dragTransition(event, move)
+                    }
+                    gestureVelocity?.addMovement(event)
                 }
-                doubleTap = false
-                drawerDragging = true
-                sheet.animate().cancel()
-                pageScroll.animate().cancel()
-                (sheet.getChildAt(0) as ArtView).apply {
-                    systemWallpaper = art.systemWallpaper
-                    wallpaperImage = art.wallpaperImage
-                    invalidate()
-                }
-                sheet.visibility = View.VISIBLE
-                return dragDrawer(event)
             }
-            drawerVelocity?.addMovement(event)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                dragCandidate = null
+                clearGestureVelocity()
+            }
         }
-        if (event.actionMasked in setOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN)) {
-            clearDrawerVelocity()
-        }
-        if(touchInHud){
+        if (touchInHud) {
             pinchDetector.onTouchEvent(event)
             tapDetector.onTouchEvent(event)
         }
-        if(event.actionMasked!=MotionEvent.ACTION_UP||!touchInBody)return super.dispatchTouchEvent(event)
-        if(pinchHandled){pinchHandled=false;doubleTap=false;return true}
-        if(doubleTap){
-            doubleTap=false
-            when(prefs.getInt("double_tap",0)){
-                1->openAtlas()
-                2->hudRoute("terminal")
-                3->safeStart(Intent(Settings.ACTION_DISPLAY_SETTINGS))
-                else->openSearch()
+        if (action == MotionEvent.ACTION_UP && touchInHud && touchInBody) {
+            if (pinchHandled) { pinchHandled = false; doubleTap = false; return true }
+            if (doubleTap) {
+                doubleTap = false
+                when (prefs.getInt("double_tap",0)) {
+                    1 -> openAtlas()
+                    2 -> hudRoute("terminal")
+                    3 -> safeStart(Intent(Settings.ACTION_DISPLAY_SETTINGS))
+                    else -> openSearch()
+                }
+                return true
             }
-            return true
-        }
-        val distance=dp(72)
-        if(abs(dx)>distance&&abs(dx)>abs(dy)*1.35f){
-            homePage=(homePage+if(dx<0)1 else 5)%6
-            show("HOME")
-            return true
-        }
-        if(touchInHud&&dy>distance&&dy>abs(dx)*1.35f){
-            openSearch()
-            return true
+            val dx = event.x - touchX
+            val dy = event.y - touchY
+            if (dy > dp(72) && dy > abs(dx) * 1.35f) {
+                openSearch()
+                return true
+            }
         }
         return super.dispatchTouchEvent(event)
     }
     private fun openSearch(){
         query=""
         show("GRID")
-        gridSearch?.let{field->field.requestFocus();field.post{
+        surface.search?.let{field->field.requestFocus();field.post{
             getSystemService(android.view.inputmethod.InputMethodManager::class.java).showSoftInput(field,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }}
     }
@@ -627,12 +744,39 @@ class MainActivity: Activity() {
         }
         art.systemWallpaper=system
         art.wallpaperImage=null
-        art.invalidate()
+        syncBackdrops()
         if(custom&&!system&&!io.isShutdown)io.execute{
             val bitmap=WallpaperStore.load(this,id)
-            handler.post{if(!isDestroyed&&key==wallpaperKey){art.wallpaperImage=bitmap;art.invalidate()}}
+            handler.post{if(!isDestroyed&&key==wallpaperKey){art.wallpaperImage=bitmap;syncBackdrops()}}
         }
     }
+    private fun refreshLockBackdrop() {
+        val enabled = prefs.getBoolean("lock_continuity", false)
+        val id = prefs.getString("lock_theme", theme.id) ?: theme.id
+        val color = prefs.getInt("lock_accent", accent)
+        val key = "$enabled:$id:$color"
+        if (lockCoverKey == key) return
+        lockCoverKey = key
+        access.lockBackdrop = null
+        if (!enabled || io.isShutdown) return
+        io.execute {
+            val image = runCatching { NeonArt.wallpaper(540, 1200, color, id) }.getOrNull()
+            handler.post {
+                if (!isDestroyed && key == lockCoverKey) access.lockBackdrop = image
+                else image?.recycle()
+            }
+        }
+    }
+
+    private fun syncBackdrops() {
+        art.invalidate()
+        for (view in surfaces.values) {
+            view.art.systemWallpaper = art.systemWallpaper
+            view.art.wallpaperImage = art.wallpaperImage
+            view.art.invalidate()
+        }
+    }
+
     private fun networkChanged() {
         val value=if(AtlasApi(this).connected())"Rede disponível" else "Offline"
         if(value!=networkState){networkState=value;EventJournal.record("NETWORK",value)}
@@ -640,6 +784,7 @@ class MainActivity: Activity() {
         renderWeather()
     }
     private fun renderWeather() {
+        updateStatus()
         val view=hud?:return
         val reading=weather.cached()
         val age=reading?.let{System.currentTimeMillis()-it.fetched}?:0L
@@ -663,21 +808,21 @@ class MainActivity: Activity() {
     }
     private fun legacyHome() {
         add(mono(when(theme.id){Themes.TERMINAL->"user@neon:~ / HOME";Themes.CORPORATE->"PERSONNEL / PRIVATE WORKSPACE";else->"PERSONAL TERMINAL   /   01"}))
-        clock=label("",64f).apply {typeface=if(theme.id==Themes.NEON)Typeface.create("sans-serif-thin",Typeface.NORMAL)else Typeface.create(theme.font,Typeface.NORMAL);letterSpacing=if(theme.mono)0f else -.04f;Themes.tag(this,"clock",theme)};add(clock!!)
-        date=mono("",12f,muted);add(date!!);updateClock()
-        val badge=panel();badge.addView(mono(if(theme.mono)"[ SYSTEM / ONLINE ]" else "CORE ONLINE",11f));badge.addView(label(when(theme.id){Themes.TERMINAL->"session.local > ready_";Themes.CORPORATE->"Your time. Company standard.";else->"Seu mundo. Outra frequência."},18f));battery=mono(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",10f,muted);badge.addView(battery);add(badge)
+        surface.clock=label("",64f).apply {typeface=if(theme.id==Themes.NEON)Typeface.create("sans-serif-thin",Typeface.NORMAL)else Typeface.create(theme.font,Typeface.NORMAL);letterSpacing=if(theme.mono)0f else -.04f;Themes.tag(this,"clock",theme)};add(surface.clock!!)
+        surface.date=mono("",12f,muted);add(surface.date!!);updateClock()
+        val badge=panel();badge.addView(mono(if(theme.mono)"[ SYSTEM / ONLINE ]" else "CORE ONLINE",11f));badge.addView(label(when(theme.id){Themes.TERMINAL->"session.local > ready_";Themes.CORPORATE->"Your time. Company standard.";else->"Seu mundo. Outra frequência."},18f));surface.battery=mono(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",10f,muted);badge.addView(surface.battery);add(badge)
         if(!isDefaultHome()) {add(label("Modo recomendado · HyperOS preservado",12f,muted));add(button("PERSONALIZAR O POCO LAUNCHER") {nativeSetup()})}
         val atlas=button("ATLAS") {startActivity(Intent(this,AtlasEntryActivity::class.java))}
-        atlas.setOnLongClickListener {openAtlas();true};Themes.tag(atlas,"atlas-home",theme);atlasHomeButton=atlas;updateAtlasState();add(atlas)
+        atlas.setOnLongClickListener {openAtlas();true};Themes.tag(atlas,"atlas-home",theme);surface.atlas=atlas;updateAtlasState();add(atlas)
         add(mono("QUICK ACCESS",11f))
         val fav=prefs.getStringSet("favorites",emptySet())?:emptySet()
         val chosen=apps.filter {it.key in fav}.ifEmpty {apps.filter {it.component.packageName!=packageName}.take(8)}
         appGrid(chosen,body)
-        add(button("TODOS OS APLICATIVOS  ↗") {show("GRID")})
+        add(button("TODOS OS APLICATIVOS  ↗") {navigate("GRID")})
         shortcuts()
         widgetViews()
     }
-    private fun updateClock() {hud?.updateClockAndNetwork();val now=Date();clock?.text=SimpleDateFormat("HH:mm",Locale.getDefault()).format(now);date?.text=SimpleDateFormat("EEEE, dd MMMM",Locale("pt","BR")).format(now).uppercase(Locale("pt","BR"))}
+    private fun updateClock() {hud?.updateClockAndNetwork();val now=Date();surface.clock?.text=SimpleDateFormat("HH:mm",Locale.getDefault()).format(now);surface.date?.text=SimpleDateFormat("EEEE, dd MMMM",Locale("pt","BR")).format(now).uppercase(Locale("pt","BR"))}
     private fun loadApps() {
         if(io.isShutdown)return
         val generation=++sessionGeneration
@@ -686,18 +831,31 @@ class MainActivity: Activity() {
             handler.post {
                 if (isDestroyed || generation != sessionGeneration || apps == result) return@post
                 apps = result
-                when {
-                    drawerDragging -> refreshAfterDrawer = true
-                    page == "GRID" -> renderGrid()
-                    page == "HOME" -> show("HOME")
-                }
+                if (transition != null) appsChangedDuringTransition = true
+                else refreshAppSurfaces()
             }
         }
     }
+    private fun refreshAppSurfaces() {
+        if (page == "HOME") {
+            show("HOME")
+            return
+        }
+        surfaces.remove("HOME")?.let {
+            viewport.removeView(it.frame)
+            dragSources.clear()
+            dropTargets.clear()
+        }
+        surfaces["GRID"]?.let { renderGrid(it) }
+        updateStatus()
+        warmNeighbors()
+    }
+
     private fun grid(parent: LinearLayout, initialQuery: String) {
+        val owner = surface
         add(label("Aplicativos",24f), parent)
         val search=EditText(this).apply {hint=if(theme.mono)"grep aplicativos..." else "Pesquisar aplicativos";background=theme.background(this@MainActivity,true);Themes.tag(this,"search",theme);setText(initialQuery);setTextColor(textColor);setHintTextColor(muted);textSize=16f;setSingleLine(true);inputType=android.text.InputType.TYPE_CLASS_TEXT;contentDescription="Pesquisar aplicativos";setPadding(dp(12),dp(8),dp(12),dp(8))}
-        gridSearch=search
+        owner.search=search
         add(search, parent)
         val cats=Spinner(this);val names=arrayOf("Todos","Jogos","Produtividade","Social","Mídia","Outros")
         cats.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
@@ -706,9 +864,9 @@ class MainActivity: Activity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selected = intArrayOf(-2, 0, 7, 4, 1, -1)[position]
-                if (gridSearch === search && category != selected) {
+                if (surfaces["GRID"] === owner && category != selected) {
                     category = selected
-                    renderGrid()
+                    renderGrid(owner)
                 }
             }
         }
@@ -720,13 +878,14 @@ class MainActivity: Activity() {
         }
         controls.addView(options, LinearLayout.LayoutParams(0, dp(48), 1.3f))
         add(controls, parent)
-        gridBody=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL}
-        add(gridBody!!, parent)
-        search.addTextChangedListener(object: TextWatcher {override fun beforeTextChanged(s: CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s: CharSequence?,start:Int,before:Int,count:Int){query=s.toString();renderGrid()};override fun afterTextChanged(s:Editable?) {}})
-        renderGrid()
+        val tiles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        owner.grid = tiles
+        add(tiles, parent)
+        search.addTextChangedListener(object: TextWatcher {override fun beforeTextChanged(s: CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s: CharSequence?,start:Int,before:Int,count:Int){query=s.toString();renderGrid(owner)};override fun afterTextChanged(s:Editable?) {}})
+        renderGrid(owner)
     }
-    private fun renderGrid() {
-        val container=gridBody?:return
+    private fun renderGrid(owner: Surface = surface) {
+        val container=owner.grid?:return
         clearAppDrag()
         drawerDragSources.clear()
         drawerDropTargets.clear()
@@ -735,7 +894,7 @@ class MainActivity: Activity() {
         val favorites=prefs.getStringSet("favorites",emptySet()).orEmpty()
         val order=gridOrder().withIndex().associate { it.value to it.index }
         val mode=prefs.getString("grid_sort","alpha")
-        val searchText = gridSearch?.text?.toString().orEmpty()
+        val searchText = owner.search?.text?.toString().orEmpty()
         val filtered=apps.filter {it.key !in hidden && Policy.matches(it.label,searchText) && (category==-2 || if(category==1)it.category in 1..3 else it.category==category)}
             .sortedWith(compareBy<AppEntry>{when(mode){"manual"->order[it.key]?:Int.MAX_VALUE;"favorites"->if(it.key in favorites)0 else 1;else->0}}
                 .thenBy(String.CASE_INSENSITIVE_ORDER){it.label})
@@ -837,7 +996,20 @@ class MainActivity: Activity() {
         add(mono("NEON STATUS"));add(label("Sinais reais.",32f))
         val fs=StatFs(filesDir.absolutePath);val gb=1024.0*1024*1024
         val card=panel();card.addView(mono("DISPOSITIVO",10f));card.addView(label(Build.MODEL,22f));card.addView(label("Android ${Build.VERSION.RELEASE} · SDK ${Build.VERSION.SDK_INT}\nBuild: ${Build.DISPLAY}",12f,muted));card.addView(label("HyperOS: confirme a versão em Sobre o telefone. A build pública não identifica sempre a versão comercial.",12f,muted));add(card)
-        battery=label(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",20f);add(battery!!)
+        val charge = label(if(batteryLevel>=0)"BATERIA  $batteryLevel%" else "BATERIA  —",20f)
+        surface.battery = charge
+        add(charge)
+        val meter = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressTintList = android.content.res.ColorStateList.valueOf(accent)
+            contentDescription = "Nível de bateria"
+        }
+        surface.batteryBar = meter
+        add(meter)
+        val live = mono("", 13f)
+        surface.signals = live
+        add(live)
+        updateStatus()
         add(label(String.format(Locale.getDefault(),"Armazenamento da partição de dados\n%.1f GiB livres / %.1f GiB disponíveis ao sistema",fs.availableBytes/gb,fs.totalBytes/gb),16f))
         add(label("Tela ativa: ${display?.refreshRate?.toInt()?:0} Hz\nModos: ${display?.supportedModes?.map {it.refreshRate.toInt()}?.distinct()?.joinToString()}",14f,muted))
         add(button("ABRIR SOBRE O TELEFONE") {safeStart(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS))})
@@ -845,6 +1017,15 @@ class MainActivity: Activity() {
         add(button("VER / EXPORTAR DIAGNÓSTICO") {diagnosticText=diagnostics.report().toString(2);diagnostics.stop();AlertDialog.Builder(this).setTitle("Medição do processo NEON").setMessage(diagnosticText).setPositiveButton("Exportar JSON"){_,_->safeStartForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/json").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"neon-diagnostico.json"),200)}.setNegativeButton("Fechar",null).show()})
         add(label("A medição termina quando o app fica invisível. Não mede a autenticação nem o desempenho de outros apps.",12f,muted))
     }
+    private fun updateStatus() {
+        val signal = surface.signals ?: return
+        val forecast = weather.cached()
+        val city = forecast?.let { "${it.city.name} · ${it.degrees}" } ?: "Sem leitura"
+        signal.text = "REDE / ${if (AtlasApi(this).connected()) "Conectada" else "Offline"}\n" +
+            "CLIMA / $city\nAPPS / ${apps.size} atividades visíveis"
+        surface.batteryBar?.setProgress(batteryLevel.coerceAtLeast(0), surface.frame.isShown && motionEnabled())
+    }
+
     private fun config() {
         add(mono("NEON CONFIG"));add(label("Sua frequência.",32f))
         add(mono("TEMA ATIVO / ${theme.title}"))
@@ -862,6 +1043,8 @@ class MainActivity: Activity() {
         add(button("NEON ICON STUDIO"){safeStart(Intent(this,IconStudioActivity::class.java))})
         add(button("HUD / CLIMA"){hudRoute("weather")})
         add(button("TERMINAL / EVENTOS REAIS"){hudRoute("terminal")})
+        add(button("ATIVAR TECLADO NEON") { safeStart(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) })
+        add(button("ESCOLHER TECLADO") { getSystemService(android.view.inputmethod.InputMethodManager::class.java).showInputMethodPicker() })
         add(button("CONFIGURAR ATLAS") {openAtlas()})
         add(button("WIDGET TERMINAL"){if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(ComponentName(this,TerminalWidget::class.java),null,null)else toast("Adicione NEON Terminal pelo menu Widgets.")})
         add(button("WIDGET COMPACTO ATLAS") {if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(ComponentName(this,AtlasWidget::class.java),null,null)else toast("Adicione ATLAS pelo menu Widgets do launcher.")})
@@ -871,9 +1054,10 @@ class MainActivity: Activity() {
                 .setPositiveButton("Abrir escolha do Android") {_,_->val role=getSystemService(RoleManager::class.java);if(role.isRoleAvailable(RoleManager.ROLE_HOME))safeStart(role.createRequestRoleIntent(RoleManager.ROLE_HOME))else safeStart(Intent(Settings.ACTION_HOME_SETTINGS))}.setNegativeButton("Manter atual",null).show()
         })
         add(button("RESTAURAR POCO LAUNCHER") {safeStart(Intent(Settings.ACTION_HOME_SETTINGS))})
+        add(button("BLOQUEIO NEON / ARTE E EFEITOS") { safeStart(Intent(this, LockStudioActivity::class.java)) })
         add(mono("NEON ACCESS  /  TRANSIÇÃO VISUAL"))
         add(label("A autenticação pertence ao HyperOS. Este efeito decorativo só aparece sobre a Home NEON quando um desbloqueio é observado; não aparece sobre outros aplicativos. No modo nativo, use o efeito oficial de digital.",12f,muted))
-        val effects=Spinner(this).apply {adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,Policy.effects);setSelection(prefs.getInt("effect",2).coerceIn(0,4))}
+        val effects=Spinner(this).apply {adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,Policy.effects);setSelection(prefs.getInt("effect",2).coerceIn(Policy.effects.indices))}
         effects.onItemSelectedListener=object: AdapterView.OnItemSelectedListener {override fun onNothingSelected(p:AdapterView<*>?){};override fun onItemSelected(p:AdapterView<*>?,v:View?,pos:Int,id:Long){prefs.edit().putInt("effect",pos).apply()}};add(effects)
         switch("Modo instantâneo", "instant",false)
         switch("Modo econômico · sem animação", "saver",false)

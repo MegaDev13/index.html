@@ -16,6 +16,9 @@ adb install -r neon-os/app/build/outputs/apk/debug/app-debug.apk
 adb install -r neon-os/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 # Exercise the software keyboard even when the runner exposes a host keyboard.
 adb shell settings put secure show_ime_with_hard_keyboard 1
+# Opt in to the actual Android input method on this test device.
+adb shell ime enable dev.neonos.poco/.NeonKeyboard
+adb shell ime set dev.neonos.poco/.NeonKeyboard
 # Select NEON as HOME only in this disposable AVD and stop cold-boot Quickstep.
 # This affects this disposable emulator only; it is not part of the app.
 if [[ "$system_home" == */* ]]; then

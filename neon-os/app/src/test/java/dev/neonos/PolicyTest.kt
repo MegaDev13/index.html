@@ -2,7 +2,7 @@ package dev.neonos
 import org.junit.Assert.*
 import org.junit.Test
 class PolicyTest {
-    @Test fun effectsAreDistinct() {assertEquals(5,Policy.effects.toSet().size)}
+    @Test fun effectsAreDistinct() {assertEquals(8,Policy.effects.toSet().size)}
     @Test fun durationsStayWithinBudget() {for(n in -100..1000)assertTrue(Policy.duration(n,false,false,true) in 200..350)}
     @Test fun instantAndSaverRespectSystem() {assertEquals(0L,Policy.duration(350,true,false,true));assertEquals(0L,Policy.duration(350,false,true,true));assertEquals(0L,Policy.duration(350,false,false,false))}
     @Test fun searchIgnoresCaseAndAccents() {assertTrue(Policy.matches("Configurações","CONFIGURACOES"));assertFalse(Policy.matches("Câmera","banco"))}
