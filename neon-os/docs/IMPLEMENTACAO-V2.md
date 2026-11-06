@@ -1,4 +1,4 @@
-# NEON OS 0.3.0 • controles e escopo
+# NEON OS 0.3.1 • controles e escopo
 
 A Home aproxima o HUD da referência com molduras angulares, circuitos discretos, bateria e data no topo, silhueta mundial, anel de temperatura, relógio central, atalhos laterais e dock circular. Os três temas têm geometria, tipografia e desenhos próprios. As capturas da entrega são da interface Android executada pelo workflow.
 
@@ -6,7 +6,7 @@ A Home aproxima o HUD da referência com molduras angulares, circuitos discretos
 | --- | --- |
 | CONFIG → HUD / CLIMA | Ative clima, escolha cidade ou autorize localização aproximada. Ajuste mapa, anel, hora, escala do HUD e atualização. Toque no indicador para consultar dados e origem. |
 | CONFIG → ORGANIZAR HOME / GESTOS | Ajuste páginas, pastas, edição por arraste, acesso a widgets e ação de dois toques. |
-| Home | Deslize para cima no HUD para abrir a gaveta, para baixo para pesquisar e para os lados para trocar de página. A pinça abre a organização. |
+| Home | Arraste para cima no HUD para revelar a gaveta conforme move o dedo. Soltar após um gesto curto volta à Home. Deslize para baixo para pesquisar e para os lados para trocar de página. A pinça abre a organização. |
 | Páginas de apps | No modo de edição, pressione um app e arraste sobre outro para ordenar ou sobre um número para mover. Crie pastas no menu de organização. |
 | Dock | Pressione prolongadamente um botão para escolher o atalho, quando disponível. ATLAS também tem acesso ao painel por pressão longa. |
 | GRID → ORDENAR / GRADE / OCULTOS | Ajuste colunas, ordenação e visibilidade. Favoritos e páginas são independentes do tema. |
