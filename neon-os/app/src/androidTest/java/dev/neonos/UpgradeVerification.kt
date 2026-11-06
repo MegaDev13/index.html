@@ -107,10 +107,43 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         shot("v2-hud-map-weather")
         val hudBounds = Rect()
         main { check(find(home.window.decorView) { it is HudHomeView }!!.getGlobalVisibleRect(hudBounds), "HUD invisible") }
-        swipe(hudBounds.centerX().toFloat(), hudBounds.top + hudBounds.height() * .65f, 0f, -hudBounds.height() * .25f)
-        main { check(text(home, "Aplicativos") != null, "Swipe up did not open drawer") }
+        val gestureX = hudBounds.centerX().toFloat()
+        val gestureY = hudBounds.top + hudBounds.height() * .65f
+        val drawer = find(home.window.decorView) { it.tag == "neon:swipe-drawer" }!!
+        val distance = drawer.height * .42f
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, y: Float, elapsed: Long) {
+            val event = MotionEvent.obtain(downTime, downTime + elapsed, action, gestureX, y, 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            try { main { home.dispatchTouchEvent(event) } } finally { event.recycle() }
+        }
+        main { check(drawer.visibility == View.INVISIBLE && drawer.height > 0, "Drawer was not laid out ahead of the gesture") }
+        send(MotionEvent.ACTION_DOWN, gestureY, 0)
+        send(MotionEvent.ACTION_MOVE, gestureY - distance / 2, 160)
+        main {
+            check(drawer.visibility == View.VISIBLE, "Drawer only appeared after release")
+            check(kotlin.math.abs(drawer.translationY - (drawer.height - distance / 2)) < 1f, "Drawer did not follow initial drag")
+        }
+        send(MotionEvent.ACTION_MOVE, gestureY - distance, 320)
+        main {
+            check(kotlin.math.abs(drawer.translationY - (drawer.height - distance)) < 1f, "Drawer did not follow continued drag")
+        }
+        shot("v031-drawer-drag")
+        send(MotionEvent.ACTION_MOVE, gestureY - distance / 4, 500)
+        main {
+            check(kotlin.math.abs(drawer.translationY - (drawer.height - distance / 4)) < 1f, "Drawer did not follow reversal")
+        }
+        send(MotionEvent.ACTION_UP, gestureY - distance / 4, 750)
+        Thread.sleep(400)
+        main { check(drawer.visibility == View.INVISIBLE, "Short drag left drawer open") }
+
+        swipe(gestureX, gestureY, 0f, -hudBounds.height() * .25f)
+        main {
+            check(drawer.visibility == View.VISIBLE && drawer.translationY == 0f, "Swipe up did not open the same drawer")
+            check(text(home, "Aplicativos") != null, "Drawer title missing")
+        }
         shot("v2-gesture-drawer")
-        evidence.put("swipe_up", true)
+        evidence.put("swipe_up", true).put("drawer_follows_finger_before_release", true).put("short_drawer_swipe_returns_home", true)
         prefs.edit().putStringSet("favorites", savedFavorites).commit()
 
         val store = IconStore(context)
