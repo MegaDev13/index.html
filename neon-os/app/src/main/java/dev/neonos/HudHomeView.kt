@@ -270,6 +270,10 @@ class HudHomeView(
         }
     }
 
+    fun actionAt(x:Float,y:Float):Boolean {
+        val rect=Rect()
+        return boxes.any{(it.view.isClickable||it.view.isLongClickable)&&it.view.getGlobalVisibleRect(rect)&&rect.contains(x.toInt(),y.toInt())}
+    }
     fun stopMotion() { chargeMotion?.cancel(); chargeMotion = null }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); EventJournal.observers.add(observe); updateJournal() }
     override fun onDetachedFromWindow() { EventJournal.observers.remove(observe); stopMotion(); super.onDetachedFromWindow() }

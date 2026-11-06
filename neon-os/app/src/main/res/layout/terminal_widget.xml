@@ -1,0 +1,8 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/terminal_widget" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="12dp" android:orientation="vertical" android:background="@drawable/widget_bg_terminal">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="NEON TERMINAL / &gt;_" android:textColor="#D6E5DF" android:fontFamily="monospace" android:textSize="13sp"/>
+    <TextView android:id="@+id/terminal_log" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textColor="#00FF88" android:fontFamily="monospace" android:textSize="12sp" android:maxLines="5"/>
+</LinearLayout>

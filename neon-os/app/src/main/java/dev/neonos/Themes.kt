@@ -9,7 +9,8 @@ import android.widget.ImageView
 /** Shared design tokens: launcher, assistant, icons, wallpaper and RemoteViews. */
 data class ThemeSpec(val id:String,val title:String,val accent:Int,val secondary:Int,val text:Int,val muted:Int,val panel:Int,val stroke:Int,val radius:Int,val font:String,val mono:Boolean) {
     fun background(context:Context,button:Boolean=false)=GradientDrawable().apply {
-        setColor(panel);cornerRadius=radius*context.resources.displayMetrics.density
+        val opacity=context.getSharedPreferences("neon",0).getInt("panel_opacity",85).coerceIn(20,100)
+        setColor(Color.argb(Color.alpha(panel)*opacity/100,Color.red(panel),Color.green(panel),Color.blue(panel)));cornerRadius=radius*context.resources.displayMetrics.density
         setStroke((context.resources.displayMetrics.density).toInt().coerceAtLeast(1),if(button)secondary else stroke)
     }
 }

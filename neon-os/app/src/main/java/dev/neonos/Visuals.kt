@@ -57,7 +57,20 @@ object NeonArt {
 class ArtView(context: Context, var accent: Int): View(context) {
     var themeId=Themes.current(context).id
     var hudMode=false
-    override fun onDraw(canvas: Canvas) { if(hudMode)canvas.drawColor(Color.BLACK)else NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent,themeId) }
+    var systemWallpaper=false
+    var wallpaperImage:Bitmap?=null
+    private val wallpaperPaint=Paint(Paint.FILTER_BITMAP_FLAG)
+    override fun onDraw(canvas:Canvas){
+        if(systemWallpaper){canvas.drawColor(Color.argb(80,0,0,0));return}
+        val image=wallpaperImage
+        if(image!=null){
+            val scale=maxOf(width.toFloat()/image.width,height.toFloat()/image.height)
+            val x=(width-image.width*scale)/2
+            val y=(height-image.height*scale)/2
+            canvas.drawBitmap(image,null,RectF(x,y,x+image.width*scale,y+image.height*scale),wallpaperPaint)
+        }else if(hudMode)canvas.drawColor(Color.BLACK)
+        else NeonArt.draw(canvas,width.toFloat(),height.toFloat(),accent,themeId)
+    }
 }
 class AccessView(context: Context): View(context) {
     var accent=Color.CYAN; var effect=2; var intensity=.65f; var luminance=.8f

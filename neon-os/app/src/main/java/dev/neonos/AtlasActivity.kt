@@ -43,6 +43,7 @@ class AtlasActivity:Activity() {
     private val prefs by lazy{getSharedPreferences("neon",0)}
     private val secure by lazy{AtlasStorage(this)}
     private val api by lazy{AtlasApi(this)}
+    private val weather by lazy{WeatherClient(this)}
     private val io=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
     private var generation=0
@@ -65,13 +66,13 @@ class AtlasActivity:Activity() {
     private val stopMic=Runnable{recognizer?.cancel();orb.status("PRONTO");status.text="Microfone encerrado por limite de tempo."}
     override fun onCreate(state:Bundle?) {
         super.onCreate(state);window.setDecorFitsSystemWindows(false);compact=intent.getBooleanExtra("compact",false)
-        messages=secure.history();render()
+        EventJournal.record("ATLAS","Painel inicializado");messages=secure.history();render()
 
     }
     override fun onStart(){super.onStart();getSystemService(android.net.ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)}
     override fun onStop(){getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);super.onStop()}
     override fun onResume(){super.onResume();active=true;if(drawnTheme!=theme.id)render();refreshStatus()}
-    override fun onPause(){active=false;generation++;api.cancel();busy=false;recognizer?.cancel();recognizer?.destroy();recognizer=null;main.removeCallbacks(stopMic);tts?.stop();tts?.shutdown();tts=null;ttsReady=false;orb.stop();super.onPause()}
+    override fun onPause(){active=false;generation++;api.cancel();weather.cancel();busy=false;recognizer?.cancel();recognizer?.destroy();recognizer=null;main.removeCallbacks(stopMic);tts?.stop();tts?.shutdown();tts=null;ttsReady=false;orb.stop();super.onPause()}
     override fun onDestroy(){io.shutdownNow();tts?.shutdown();super.onDestroy()}
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
     private fun text(value:String,size:Float=14f,color:Int=theme.text)=TextView(this).apply{text=value;textSize=size;setTextColor(color);typeface=Typeface.create(theme.font,Typeface.NORMAL);setPadding(0,dp(5),0,dp(5));Themes.tag(this,"atlas-text",theme)}
@@ -186,6 +187,7 @@ class AtlasActivity:Activity() {
     private fun executeAction(action:LocalAction) {
         when(action.name) {
             "set_theme"->{Themes.select(this,action.value);render();say("Tema ${theme.title} ativado. Favoritos e widgets preservados.")}
+            "refresh_weather"->updateWeatherAction()
             "show_battery"->{val b=registerReceiver(null,IntentFilter(Intent.ACTION_BATTERY_CHANGED));val level=b?.getIntExtra("level",-1)?:-1;val scale=b?.getIntExtra("scale",100)?:100;say(if(level>=0&&scale>0)"Bateria: ${level*100/scale}%."else"Bateria indisponível.")}
             "open_settings"->launch(Intent(Settings.ACTION_SETTINGS))
             "open_camera"->launch(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA))
@@ -198,6 +200,27 @@ class AtlasActivity:Activity() {
                 if(matches.isEmpty())say("Aplicativo '${action.value}' não encontrado entre os apps disponíveis. Use Pesquise meus aplicativos.")
                 else if(matches.size==1)try{AppRepository(this).open(matches[0])}catch(_:Exception){say("Não foi possível abrir esse aplicativo.")}
                 else AlertDialog.Builder(this).setTitle("Escolha o aplicativo/perfil").setItems(matches.map{"${it.label} / perfil ${it.serial}"}.toTypedArray()){_,i->try{AppRepository(this).open(matches[i])}catch(_:Exception){say("Perfil indisponível.")}}.show()
+            }
+        }
+    }
+    private fun updateWeatherAction(){
+        if(weather.city()==null||!prefs.getBoolean("weather_enabled",false)){
+            say("Escolha uma cidade e ative o clima.")
+            launch(Intent(this,HudSettingsActivity::class.java))
+            return
+        }
+        val ticket=++generation
+        busy=true
+        orb.status("PROCESSANDO")
+        io.execute{
+            val result=runCatching{weather.refresh()}
+            main.post{
+                if(active&&ticket==generation){
+                    busy=false
+                    orb.status("PRONTO")
+                    result.onSuccess{say("${it.city.name}: ${it.degrees}, ${it.condition}. Fonte: Open-Meteo.")}
+                        .onFailure{say("Clima indisponível: ${it.message}")}
+                }
             }
         }
     }
@@ -242,7 +265,7 @@ class AtlasActivity:Activity() {
         AlertDialog.Builder(this).setTitle("ATLAS integrado / conexão").setMessage("Use uma conta do backend independente. Nunca digite uma chave da OpenAI ou senha do ChatGPT aqui.").setView(form).setPositiveButton("Conectar"){_,_->
             val endpoint=url.text.toString().trim().trimEnd('/');val username=user.text.toString().trim();val pass=password.text.toString();password.setText("")
             if(!api.validEndpoint(endpoint)){say("Informe uma URL HTTPS válida, sem caminho, usuário ou parâmetros.");return@setPositiveButton}
-            if(busy)return@setPositiveButton
+            if(busy){return@setPositiveButton}
             prefs.edit().putString("atlas_url",endpoint).apply();secure.setToken("");busy=true;orb.status("PROCESSANDO");val ticket=++generation
             io.execute {try{val response=api.request("/v1/login",JSONObject().put("username",username).put("password",pass));main.post{if(active&&ticket==generation){secure.setToken(response.getString("token"));busy=false;orb.status("PRONTO");refreshStatus();say("Login no backend concluído. Histórico separado do ChatGPT.")}}}catch(e:Exception){main.post{if(active&&ticket==generation){busy=false;orb.status("PRONTO");say("Falha no login: ${e.message?.take(240)}")}}}}
         }.setNegativeButton("Cancelar",null).show()

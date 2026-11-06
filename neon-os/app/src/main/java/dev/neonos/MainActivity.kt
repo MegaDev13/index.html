@@ -18,6 +18,7 @@ import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
+import kotlin.math.abs
 
 @Suppress("DEPRECATION")
 class MainActivity: Activity() {
@@ -35,6 +36,37 @@ class MainActivity: Activity() {
     private var clock: TextView?=null;private var date: TextView?=null;private var battery: TextView?=null
     private var atlasHomeButton:TextView?=null
     private var hud:HudHomeView?=null
+    private val homeLayout by lazy { HomeLayout(this) }
+    private var homePage=0
+    private var lastHomePage=0
+    private var wallpaperKey=""
+    private var touchX=0f
+    private var touchY=0f
+    private var touchInHud=false
+    private var touchInBody=false
+    private var pinchHandled=false
+    private var doubleTap=false
+    private var gridSearch:EditText?=null
+    private val tapDetector by lazy {
+        GestureDetector(this,object:GestureDetector.SimpleOnGestureListener(){
+            override fun onDown(event:MotionEvent)=true
+            override fun onDoubleTap(event:MotionEvent):Boolean {
+                val surface=hud?:return false
+                doubleTap=inside(surface,event.x,event.y)&&!surface.actionAt(event.x,event.y)
+                return doubleTap
+            }
+        })
+    }
+    private val pinchDetector by lazy {
+        ScaleGestureDetector(this,object:ScaleGestureDetector.SimpleOnScaleGestureListener(){
+            override fun onScaleBegin(detector:ScaleGestureDetector):Boolean {
+                if(!touchInHud)return false
+                pinchHandled=true
+                editHome()
+                return true
+            }
+        })
+    }
     private var plugged=false
     private var uiSettingsHash=0
     private var networkState=""
@@ -119,11 +151,11 @@ class MainActivity: Activity() {
     }
     override fun onResume() {super.onResume();if(drawnTheme!=theme.id||uiSettingsHash!=prefs.all.hashCode())show(page);updateRefresh();resumed=true;EventJournal.record("LAUNCHER","Ativo");networkChanged();updateClock();hud?.updateBattery(batteryLevel,plugged);handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
     override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
-    override fun onStop() {getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
+    override fun onStop() {TerminalWidget.refresh(this);getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;weatherWorker.shutdownNow();io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
-    override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else if(intent.hasCategory(Intent.CATEGORY_HOME))show("HOME")}
-    override fun onBackPressed() {if(page!="HOME")show("HOME") else if(!isDefaultHome())super.onBackPressed()}
+    override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else if(intent.hasCategory(Intent.CATEGORY_HOME)){homePage=0;show("HOME")}}
+    override fun onBackPressed() {if(page!="HOME"||homePage!=0){homePage=0;show("HOME")} else if(!isDefaultHome())super.onBackPressed()}
     private fun openAtlas() {startActivity(Intent(this,AtlasActivity::class.java))}
     private fun dp(v: Int)=(v*resources.displayMetrics.density).toInt()
     private fun isDefaultHome(): Boolean = getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_HOME)
@@ -133,22 +165,43 @@ class MainActivity: Activity() {
     private fun add(view: View,parent: LinearLayout=body,weight: Float=0f) {parent.addView(view,LinearLayout.LayoutParams(if(weight>0)0 else -1,if(weight>0)-1 else -2,weight).apply {bottomMargin=dp(10)})}
     private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
-        uiSettingsHash=prefs.all.hashCode();hud?.stopMotion();hud=null;page=target;art.hudMode=target=="HOME";drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
+        val animate=page!=target||lastHomePage!=homePage
+        lastHomePage=homePage;gridSearch=null;uiSettingsHash=prefs.all.hashCode();hud?.stopMotion();hud=null;page=target;art.hudMode=target=="HOME";drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
         val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
         header.addView(mono(when(theme.id){Themes.TERMINAL->">_ NEON";Themes.CORPORATE->"NEON / INDUSTRIES";else->"N / OS"},14f),LinearLayout.LayoutParams(0,-2,1f));header.addView(mono(if(isDefaultHome())"LAUNCHER" else "COMPANION",9f,muted));column.addView(header)
-        val scroll=ScrollView(this).apply {isFillViewport=true;isVerticalScrollBarEnabled=false}
+        val scroll=ScrollView(this).apply {isFillViewport=true;isVerticalScrollBarEnabled=target=="GRID"}
         body=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(0,dp(16),0,dp(14))};scroll.addView(body)
         column.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         when(target) {"HOME"->home();"GRID"->grid();"STATUS"->status();else->config()}
+        refreshWallpaper()
+        if(animate&&motionEnabled()){
+            body.alpha=.6f
+            body.translationY=dp(15).toFloat()
+            body.animate().alpha(1f).translationY(0f).setDuration(240)
+                .setInterpolator { progress -> if(progress>=1f)1f else (1-Math.exp(-7.0*progress)*Math.cos(10.0*progress)).toFloat() }.start()
+        }
         val nav=LinearLayout(this).apply {setPadding(0,dp(8),0,dp(8));gravity=Gravity.CENTER}
         for(name in listOf("HOME","GRID","ATLAS","STATUS","CONFIG")) {val b=label(name,12f,if(name==page)accent else muted).apply {gravity=Gravity.CENTER;setPadding(0,dp(15),0,dp(15));typeface=Typeface.MONOSPACE;isFocusable=true;setOnClickListener {if(name=="ATLAS")startActivity(Intent(this@MainActivity,AtlasEntryActivity::class.java))else show(name)};setOnLongClickListener {if(name=="ATLAS"){openAtlas();true}else false};Themes.tag(this,"dock",theme)};nav.addView(b,LinearLayout.LayoutParams(0,-2,1f))};column.addView(nav)
     }
     private fun home() {
         if(resources.configuration.fontScale>1.5f){legacyHome();return}
-        val favorites=prefs.getStringSet("favorites",emptySet()).orEmpty()
-        val chosen=apps.filter{it.key in favorites}.ifEmpty{apps.filter{it.component.packageName!=packageName}.take(8)}
+        val keys=homeLayout.page(homePage)
+        val selected=keys.mapNotNull { key -> apps.firstOrNull { it.key==key } }
+        if(homePage>0){
+            add(mono("HOME / PÁGINA ${homePage+1}"))
+            add(button("EDITAR PÁGINA"){editHome()})
+            if(selected.isEmpty())add(label("Mova aplicativos para esta página pelo menu de pressão longa.",14f,muted))
+            appGrid(selected,body)
+            homeTools(keys)
+            return
+        }
+        val chosen=selected.ifEmpty{if(homeLayout.configured)emptyList() else apps.filter{it.component.packageName!=packageName}.take(8)}
         val view=HudHomeView(this,chosen,::loadHudIcon,::launchApp,::appMenu,::hudRoute,::hudDock)
         hud=view
+        for((index,icon) in view.dockViews.withIndex()) {
+            val app=apps.firstOrNull { it.key==prefs.getString("dock_$index",null) }
+            if(app!=null){icon.contentDescription="Dock / ${app.label}";loadHudIcon(app,icon)}
+        }
         val ownBody=body
         val width=(resources.configuration.screenWidthDp-40).coerceAtLeast(250)
         val scale=prefs.getInt("hud_scale",1)
@@ -160,6 +213,24 @@ class MainActivity: Activity() {
         view.updateBattery(batteryLevel,plugged)
         view.updateClockAndNetwork()
         renderWeather()
+        homeTools(keys)
+    }
+    private fun homeTools(keys:List<String>){
+        for(folder in keys.filter{it.startsWith("folder:")})add(button("▦  "+homeLayout.folderName(folder)){openFolder(folder)})
+        val pages=LinearLayout(this)
+        for(index in 0..5) {
+            val tab=button(if(index==homePage)"●"else(index+1).toString()){homePage=index;show("HOME")}
+            tab.contentDescription="Página ${index+1}"
+            tab.setOnDragListener{_,event->
+                if(event.action==DragEvent.ACTION_DROP){
+                    val key=event.localState as? String
+                    if(key!=null){homeLayout.move(key,index);homePage=index;show("HOME")}
+                }
+                event.localState is String
+            }
+            pages.addView(tab,LinearLayout.LayoutParams(0,dp(48),1f))
+        }
+        add(pages)
         add(button("TODOS OS APLICATIVOS  ↗"){show("GRID")})
         shortcuts()
         widgetViews()
@@ -203,17 +274,152 @@ class MainActivity: Activity() {
             "atlas"->safeStart(Intent(this,AtlasEntryActivity::class.java))
             "atlas-panel"->openAtlas()
             "terminal"->safeStart(Intent(this,TerminalActivity::class.java))
-            "edit"->show("CONFIG")
+            "edit"->editHome()
         }
     }
     private fun hudDock(index:Int,long:Boolean) {
-        if(long){if(index==3)openAtlas() else show("CONFIG");return}
+        if(long){
+            val names=listOf("Padrão","ATLAS","Gaveta","Configuração")+apps.map{it.label}
+            AlertDialog.Builder(this).setTitle("Atalho ${index+1} da dock").setItems(names.toTypedArray()){_,choice->
+                val key=when(choice){0->"";1->"atlas";2->"grid";3->"config";else->apps[choice-4].key}
+                prefs.edit().putString("dock_$index",key).apply()
+                show("HOME")
+            }.show()
+            return
+        }
+        val key=prefs.getString("dock_$index",null)
+        apps.firstOrNull{it.key==key}?.let{launchApp(it);return}
+        when(key){"atlas"->{hudRoute("atlas");return};"grid"->{show("GRID");return};"config"->{show("CONFIG");return}}
         when(index) {
             0->safeStart(Intent(Intent.ACTION_DIAL))
             1->safeStart(Intent(Intent.ACTION_SENDTO,Uri.parse("sms:")))
             2->show("GRID")
             3->hudRoute("atlas")
             else->show("CONFIG")
+        }
+    }
+    private fun motionEnabled()=android.animation.ValueAnimator.areAnimatorsEnabled()&&
+        !prefs.getBoolean("instant",false)&&!prefs.getBoolean("saver",false)&&!getSystemService(PowerManager::class.java).isPowerSaveMode
+    private fun inside(view:View,x:Float,y:Float):Boolean {
+        val bounds=Rect()
+        return view.getGlobalVisibleRect(bounds)&&bounds.contains(x.toInt(),y.toInt())
+    }
+    private fun touchesWidget(view:View,x:Float,y:Float):Boolean {
+        if(view is AppWidgetHostView)return inside(view,x,y)
+        if(view is ViewGroup)for(index in 0 until view.childCount)if(touchesWidget(view.getChildAt(index),x,y))return true
+        return false
+    }
+    override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+        if(page!="HOME"||prefs.getBoolean("home_edit",false))return super.dispatchTouchEvent(event)
+        if(event.actionMasked==MotionEvent.ACTION_DOWN){
+            touchX=event.x
+            touchY=event.y
+            touchInHud=hud?.let{inside(it,touchX,touchY)}==true
+            touchInBody=inside(body,touchX,touchY)&&!touchesWidget(body,touchX,touchY)
+            pinchHandled=false
+        }
+        if(touchInHud){
+            pinchDetector.onTouchEvent(event)
+            tapDetector.onTouchEvent(event)
+        }
+        if(event.actionMasked!=MotionEvent.ACTION_UP||!touchInBody)return super.dispatchTouchEvent(event)
+        if(pinchHandled){pinchHandled=false;doubleTap=false;return true}
+        if(doubleTap){
+            doubleTap=false
+            when(prefs.getInt("double_tap",0)){
+                1->openAtlas()
+                2->hudRoute("terminal")
+                3->safeStart(Intent(Settings.ACTION_DISPLAY_SETTINGS))
+                else->openSearch()
+            }
+            return true
+        }
+        val dx=event.x-touchX
+        val dy=event.y-touchY
+        val distance=dp(72)
+        if(abs(dx)>distance&&abs(dx)>abs(dy)*1.35f){
+            homePage=(homePage+if(dx<0)1 else 5)%6
+            show("HOME")
+            return true
+        }
+        if(touchInHud&&abs(dy)>distance&&abs(dy)>abs(dx)*1.35f){
+            if(dy>0)openSearch() else {query="";show("GRID")}
+            return true
+        }
+        return super.dispatchTouchEvent(event)
+    }
+    private fun openSearch(){
+        query=""
+        show("GRID")
+        gridSearch?.let{field->field.requestFocus();field.post{
+            getSystemService(android.view.inputmethod.InputMethodManager::class.java).showSoftInput(field,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }}
+    }
+    private fun editHome(){
+        val editing=prefs.getBoolean("home_edit",false)
+        val options=arrayOf("HUD / clima",if(editing)"Encerrar edição por arraste"else"Editar por arraste","Criar pasta","Widgets e atalhos","Wallpaper próprio","Ação de dois toques")
+        AlertDialog.Builder(this).setTitle("Organizar a Home").setItems(options){_,index->
+            when(index){
+                0->hudRoute("weather")
+                1->{
+                    prefs.edit().putBoolean("home_edit",!editing).apply()
+                    if(!editing&&homePage==0)homePage=1
+                    show("HOME")
+                    toast(if(editing)"Edição encerrada."else"Pressione um ícone e arraste sobre outro ou sobre o número da página.")
+                }
+                2->createFolder()
+                3->{homePage=5;show("HOME")}
+                4->safeStart(Intent(this,WallpaperActivity::class.java))
+                5->AlertDialog.Builder(this).setTitle("Dois toques na área livre").setItems(arrayOf("Pesquisa","ATLAS","Terminal","Configuração de tela")){_,choice->prefs.edit().putInt("double_tap",choice).apply()}.show()
+            }
+        }.show()
+    }
+    private fun createFolder(){
+        val selected=mutableSetOf<Int>()
+        AlertDialog.Builder(this).setTitle("Selecione os apps da pasta").setMultiChoiceItems(apps.map{it.label}.toTypedArray(),null){_,index,on->
+            if(on)selected.add(index) else selected.remove(index)
+        }.setPositiveButton("Continuar"){_,_->
+            if(selected.size<2)toast("Selecione dois apps ou mais.")
+            else {
+                val input=EditText(this).apply{hint="Nome da pasta";setSingleLine()}
+                AlertDialog.Builder(this).setTitle("Nova pasta").setView(input).setPositiveButton("Criar"){_,_->
+                    runCatching{homeLayout.createFolder(input.text.toString(),selected.map{apps[it].key},homePage)}
+                        .onSuccess{show("HOME")}.onFailure{toast("Escolha um nome de 1 a 30 caracteres.")}
+                }.setNegativeButton("Cancelar",null).show()
+            }
+        }.setNegativeButton("Cancelar",null).show()
+    }
+    private fun openFolder(id:String){
+        val entries=homeLayout.folderApps(id).mapNotNull{key->apps.firstOrNull{it.key==key}}
+        val holder=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        appGrid(entries,holder,false)
+        val scroll=ScrollView(this).apply{addView(holder)}
+        val dialog=AlertDialog.Builder(this).setTitle(homeLayout.folderName(id)).setView(scroll)
+            .setNeutralButton("Desfazer pasta"){_,_->homeLayout.dissolve(id,homePage);show("HOME")}
+            .setNegativeButton("Fechar",null).create()
+        dialog.setOnShowListener{if(motionEnabled()){scroll.scaleX=.95f;scroll.scaleY=.95f;scroll.animate().scaleX(1f).scaleY(1f).setDuration(190).start()}}
+        dialog.show()
+    }
+    private fun refreshWallpaper(){
+        val id=theme.id
+        val custom=prefs.getBoolean("wallpaper_use_$id",false)
+        val system=prefs.getBoolean("system_wallpaper",false)
+        val key="$id:$custom:$system:${prefs.getLong("wallpaper_revision",0)}"
+        if(key==wallpaperKey)return
+        wallpaperKey=key
+        if(system){
+            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        }else{
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.BLACK))
+        }
+        art.systemWallpaper=system
+        art.wallpaperImage=null
+        art.invalidate()
+        if(custom&&!system&&!io.isShutdown)io.execute{
+            val bitmap=WallpaperStore.load(this,id)
+            handler.post{if(!isDestroyed&&key==wallpaperKey){art.wallpaperImage=bitmap;art.invalidate()}}
         }
     }
     private fun networkChanged() {
@@ -269,44 +475,105 @@ class MainActivity: Activity() {
     private fun grid() {
         add(mono("NEON GRID"));add(label("Aplicativos",32f))
         val search=EditText(this).apply {hint=if(theme.mono)"grep aplicativos..." else "Pesquisar aplicativos";background=theme.background(this@MainActivity,true);Themes.tag(this,"search",theme);setText(query);setTextColor(textColor);setHintTextColor(muted);textSize=16f;setSingleLine(true);inputType=android.text.InputType.TYPE_CLASS_TEXT;contentDescription="Pesquisar aplicativos";setPadding(dp(12),dp(12),dp(12),dp(12))}
+        gridSearch=search
         add(search)
         val cats=Spinner(this);val names=arrayOf("Todos","Jogos","Produtividade","Social","Mídia","Outros")
         cats.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
         cats.setSelection(when(category){0->1;7->2;4->3;1->4;-1->5;else->0})
         cats.onItemSelectedListener=object: AdapterView.OnItemSelectedListener {override fun onNothingSelected(p: AdapterView<*>?){};override fun onItemSelected(p: AdapterView<*>?,v: View?,pos: Int,id: Long) {category=intArrayOf(-2,0,7,4,1,-1)[pos];renderGrid()}}
-        add(cats);gridBody=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};add(gridBody!!)
+        add(cats);add(button("ORDENAR / GRADE / OCULTOS"){gridOptions()});gridBody=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};add(gridBody!!)
         search.addTextChangedListener(object: TextWatcher {override fun beforeTextChanged(s: CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s: CharSequence?,start:Int,before:Int,count:Int){query=s.toString();renderGrid()};override fun afterTextChanged(s:Editable?) {}})
         renderGrid()
     }
     private fun renderGrid() {
         val container=gridBody?:return;container.removeAllViews()
-        val filtered=apps.filter {Policy.matches(it.label,query) && (category==-2 || if(category==1)it.category in 1..3 else it.category==category)}
+        val hidden=prefs.getStringSet("hidden_apps",emptySet()).orEmpty()
+        val favorites=prefs.getStringSet("favorites",emptySet()).orEmpty()
+        val order=gridOrder().withIndex().associate { it.value to it.index }
+        val mode=prefs.getString("grid_sort","alpha")
+        val filtered=apps.filter {it.key !in hidden && Policy.matches(it.label,query) && (category==-2 || if(category==1)it.category in 1..3 else it.category==category)}
+            .sortedWith(compareBy<AppEntry>{when(mode){"manual"->order[it.key]?:Int.MAX_VALUE;"favorites"->if(it.key in favorites)0 else 1;else->0}}
+                .thenBy(String.CASE_INSENSITIVE_ORDER){it.label})
         container.addView(mono("${filtered.size} ATIVIDADES  /  ${if(category==-1)"SEM CATEGORIA" else "PERFIS VISÍVEIS"}",9f,muted))
         appGrid(filtered,container)
         if(filtered.isEmpty())container.addView(label("Nenhum aplicativo encontrado.",14f,muted))
     }
-    private fun appGrid(entries: List<AppEntry>,parent: LinearLayout) {
-        val columns=if(resources.configuration.screenWidthDp>=600)6 else 4
+    private fun appGrid(entries: List<AppEntry>,parent: LinearLayout,allowDrag:Boolean=true) {
+        val columns=prefs.getInt("grid_columns",if(resources.configuration.screenWidthDp>=600)6 else 4).coerceIn(3,6)
+        val size=prefs.getInt("icon_size",58).coerceAtMost((resources.configuration.screenWidthDp-48)/columns-6).coerceAtLeast(30)
+        val draggable=allowDrag&&if(page=="HOME")prefs.getBoolean("home_edit",false)else prefs.getString("grid_sort","alpha")=="manual"
         entries.chunked(columns).forEach { rowEntries ->
             val row=LinearLayout(this)
             for(app in rowEntries) {
                 val tile=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(3),dp(8),dp(3),dp(8));isFocusable=true;contentDescription="Abrir ${app.label}"}
                 val frame=FrameLayout(this).apply {background=theme.background(this@MainActivity,true);Themes.tag(this,"icon-frame",theme)}
                 val icon=ImageView(this).apply {setPadding(dp(11),dp(11),dp(11),dp(11));importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO}
-                frame.addView(icon,FrameLayout.LayoutParams(-1,-1));tile.addView(frame,LinearLayout.LayoutParams(dp(58),dp(58)))
+                frame.addView(icon,FrameLayout.LayoutParams(-1,-1));tile.addView(frame,LinearLayout.LayoutParams(dp(size),dp(size)))
                 val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
                 tile.setOnClickListener {launchApp(app)}
-                tile.setOnLongClickListener {appMenu(app);true}
+                tile.setOnLongClickListener {
+                    if(draggable)tile.startDragAndDrop(ClipData.newPlainText("neon.app",app.key),View.DragShadowBuilder(tile),app.key,0)
+                    else appMenu(app)
+                    true
+                }
+                if(draggable)tile.setOnDragListener{_,event->
+                    val key=event.localState as? String
+                    if(key!=null&&key!=app.key&&event.action==DragEvent.ACTION_DROP){
+                        if(page=="HOME"){homeLayout.move(key,homePage,app.key);show("HOME")}
+                        else {
+                            val keys=(gridOrder()+apps.map{it.key}).distinct().toMutableList()
+                            keys.remove(key)
+                            keys.add(keys.indexOf(app.key).coerceAtLeast(0),key)
+                            prefs.edit().putString("grid_order",JSONArray(keys).toString()).apply()
+                            renderGrid()
+                        }
+                    }
+                    key!=null
+                }
                 loadHudIcon(app,icon)
                 row.addView(tile,LinearLayout.LayoutParams(0,-2,1f))
             }
             repeat(columns-rowEntries.size){row.addView(View(this),LinearLayout.LayoutParams(0,1,1f))};parent.addView(row)
         }
     }
-    private fun appMenu(app: AppEntry) {
-        val favorites=(prefs.getStringSet("favorites",emptySet())?:emptySet()).toMutableSet()
-        AlertDialog.Builder(this).setTitle(app.label).setItems(arrayOf(if(app.key in favorites)"Remover dos favoritos" else "Adicionar aos favoritos","Informações do aplicativo")) {_,i ->
-            if(i==0){if(!favorites.add(app.key))favorites.remove(app.key);prefs.edit().putStringSet("favorites",favorites).apply();if(page=="HOME")show("HOME")}else try{repo.info(app)}catch(_:Exception){toast("Informações indisponíveis.")}
+    private fun gridOrder():List<String>{
+        val array=runCatching{JSONArray(prefs.getString("grid_order","[]"))}.getOrElse{JSONArray()}
+        return (0 until array.length()).map{array.getString(it)}
+    }
+    private fun gridOptions(){
+        AlertDialog.Builder(this).setItems(arrayOf("Alfabética","Manual por arraste","Favoritos primeiro","Colunas","Tamanho dos ícones","Reexibir apps ocultos")){_,index->
+            when(index){
+                0,1,2->{prefs.edit().putString("grid_sort",listOf("alpha","manual","favorites")[index]).apply();renderGrid()}
+                3->AlertDialog.Builder(this).setItems(arrayOf("3","4","5","6")){_,n->prefs.edit().putInt("grid_columns",n+3).apply();renderGrid()}.show()
+                4->AlertDialog.Builder(this).setItems(arrayOf("Compacto","Padrão","Grande")){_,n->prefs.edit().putInt("icon_size",intArrayOf(44,58,72)[n]).apply();renderGrid()}.show()
+                5->{
+                    val hidden=prefs.getStringSet("hidden_apps",emptySet()).orEmpty()
+                    val choices=apps.filter{it.key in hidden}
+                    if(choices.isEmpty())toast("Nenhum aplicativo oculto.")
+                    else AlertDialog.Builder(this).setTitle("Toque para reexibir").setItems(choices.map{it.label}.toTypedArray()){_,n->
+                        prefs.edit().putStringSet("hidden_apps",hidden-choices[n].key).apply()
+                        renderGrid()
+                    }.show()
+                }
+            }
+        }.show()
+    }
+    private fun appMenu(app:AppEntry){
+        val favorites=prefs.getStringSet("favorites",emptySet()).orEmpty().toMutableSet()
+        val title=if(app.key in favorites)"Remover dos favoritos"else"Adicionar aos favoritos"
+        AlertDialog.Builder(this).setTitle(app.label).setItems(arrayOf(title,"Informações do aplicativo","Mover para página","Ocultar da gaveta","Personalizar ícone")){_,index->
+            when(index){
+                0->{
+                    if(favorites.add(app.key))homeLayout.move(app.key,0)
+                    else {favorites.remove(app.key);homeLayout.unpin(app.key)}
+                    prefs.edit().putStringSet("favorites",favorites).apply()
+                    show(page)
+                }
+                1->runCatching{repo.info(app)}.onFailure{toast("Informações indisponíveis.")}
+                2->AlertDialog.Builder(this).setTitle("Página de destino").setItems((1..6).map{"Página $it"}.toTypedArray()){_,n->homeLayout.move(app.key,n);show(page)}.show()
+                3->{prefs.edit().putStringSet("hidden_apps",prefs.getStringSet("hidden_apps",emptySet()).orEmpty()+app.key).apply();renderGrid()}
+                4->safeStart(Intent(this,IconStudioActivity::class.java))
+            }
         }.show()
     }
     private fun shortcuts() {
@@ -336,10 +603,21 @@ class MainActivity: Activity() {
         add(mono("NEON CONFIG"));add(label("Sua frequência.",32f))
         add(mono("TEMA ATIVO / ${theme.title}"))
         for(id in Themes.ids)add(button(Themes.spec(id).title) {Themes.select(this,id);art.themeId=id;art.accent=accent;art.invalidate();show("CONFIG")})
+        add(button("WALLPAPER PRÓPRIO"){safeStart(Intent(this,WallpaperActivity::class.java))})
+        add(button("ORGANIZAR HOME / GESTOS"){editHome()})
+        add(button("VERIFICAR ATUALIZAÇÕES"){safeStart(Intent(this,ReleaseActivity::class.java))})
+        add(button("MODO DE DESEMPENHO"){
+            AlertDialog.Builder(this).setItems(arrayOf("Visual completo","Equilibrado","Econômico")){_,i->
+                prefs.edit().putString("performance",listOf("full","balanced","economy")[i]).putBoolean("saver",i==2).apply()
+                updateRefresh()
+                show("CONFIG")
+            }.show()
+        })
         add(button("NEON ICON STUDIO"){safeStart(Intent(this,IconStudioActivity::class.java))})
         add(button("HUD / CLIMA"){hudRoute("weather")})
         add(button("TERMINAL / EVENTOS REAIS"){hudRoute("terminal")})
         add(button("CONFIGURAR ATLAS") {openAtlas()})
+        add(button("WIDGET TERMINAL"){if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(ComponentName(this,TerminalWidget::class.java),null,null)else toast("Adicione NEON Terminal pelo menu Widgets.")})
         add(button("WIDGET COMPACTO ATLAS") {if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(ComponentName(this,AtlasWidget::class.java),null,null)else toast("Adicione ATLAS pelo menu Widgets do launcher.")})
         add(button("GUIA NATIVO / PRESERVAR GESTOS") {nativeSetup()})
         add(button("TESTAR COMO LAUNCHER PADRÃO") {
@@ -378,7 +656,7 @@ class MainActivity: Activity() {
             if(widgetManager.isRequestPinAppWidgetSupported)widgetManager.requestPinAppWidget(component,null,null)else toast("No launcher original, mantenha a tela pressionada e abra Widgets → NEON OS.")
         })
         add(button("TEMAS DO HYPEROS") {val launch=packageManager.getLaunchIntentForPackage("com.android.thememanager");if(launch!=null)safeStart(launch)else safeStart(Intent(Settings.ACTION_SETTINGS))})
-        add(label("NEON OS 0.2.0 · sem anúncios, câmera, acessibilidade ou serviço permanente. Rede apenas para funções solicitadas do ATLAS; microfone por acionamento manual.\nNão modifica apps, SystemUI, AOD ou o mecanismo de bloqueio.",12f,muted))
+        add(label("NEON OS 0.3.0 · clima e atualizações opcionais. Microfone, Bluetooth e localização aproximada dependem de autorização.\nNão modifica apps, SystemUI, AOD ou o mecanismo de bloqueio.",12f,muted))
     }
     private fun switch(title:String,key:String,default:Boolean) {
         val control=Switch(this).apply {text=title;setTextColor(textColor);textSize=14f;isChecked=prefs.getBoolean(key,default);setPadding(0,dp(6),0,dp(6));setOnCheckedChangeListener{_,checked->prefs.edit().putBoolean(key,checked).apply();if(key=="highRefresh"||key=="saver")updateRefresh()}};add(control)

@@ -57,7 +57,7 @@ class TerminalActivity : NeonPanel() {
     }
 
     override fun onStart() { super.onStart(); EventJournal.observers.add(refresh); refresh() }
-    override fun onStop() { EventJournal.observers.remove(refresh); super.onStop() }
+    override fun onStop() { EventJournal.observers.remove(refresh); TerminalWidget.refresh(this); super.onStop() }
 
     fun execute(input: String) {
         val command = TerminalParser.parse(input)
@@ -77,7 +77,7 @@ class TerminalActivity : NeonPanel() {
                 "Tema aplicado."
             }
             TerminalCommand.WALLPAPER -> {
-                startActivity(Intent(Intent.ACTION_SET_WALLPAPER)); "Seletor de wallpapers aberto."
+                startActivity(Intent(this,WallpaperActivity::class.java)); "Seletor de wallpapers aberto."
             }
             TerminalCommand.ATLAS -> { startActivity(Intent(this, AtlasEntryActivity::class.java)); "ATLAS acionado." }
             TerminalCommand.CLEAR -> { EventJournal.clear(); "Registros apagados." }

@@ -35,7 +35,7 @@ adb logcat -d -s AndroidRuntime:E > neon-os/verification/crash-log.txt
 
 # Verify persisted state after a real target-process restart, not just Activity recreation.
 adb shell am force-stop dev.neonos.poco
-adb shell am start -n dev.neonos.poco/dev.neonos.MainActivity
+adb shell am start -W -n dev.neonos.poco/dev.neonos.MainActivity | tee neon-os/verification/cold-start.txt
 sleep 2
 python3 - <<'PYTEST'
 import subprocess,xml.etree.ElementTree as E,json

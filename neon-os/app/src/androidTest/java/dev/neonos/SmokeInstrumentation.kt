@@ -107,6 +107,7 @@ class SmokeInstrumentation: Instrumentation() {
             val bitmap=NeonArt.wallpaper(1220,2712,android.graphics.Color.rgb(58,242,228));check(bitmap.width==1220 && bitmap.height==2712,"Wallpaper dimensions")
             File(dir,"NEON-CORE-1220x2712.png").outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
             assertions+=FeatureVerification(this,dir).run()
+            assertions+=UpgradeVerification(this,dir).run()
             result.putString("stream","NEON emulator smoke passed: $assertions assertions. Actual images and process profiling exported. Physical HyperOS not tested.\n")
             result.putInt("assertions",assertions);finish(Activity.RESULT_OK,result)
         } catch(error:Throwable) {

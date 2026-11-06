@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-ACTIONS = {'open_app','open_settings','open_camera','search_apps','set_theme','show_battery','open_calendar','brightness_settings','web_search'}
+ACTIONS = {'open_app','open_settings','open_camera','search_apps','set_theme','show_battery','open_calendar','brightness_settings','web_search','refresh_weather'}
 THEMES = {'cyberpunk_neon','dark_terminal','corporate_dystopia'}
 INSTRUCTIONS = ('Você é ATLAS, assistente do NEON OS. Responda em português brasileiro, de forma clara. '
  'Você é uma integração da API, não uma sessão do app ChatGPT. Não afirme possuir memória ou acesso ao aparelho. '

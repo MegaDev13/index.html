@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <queries>
+        <intent><action android:name="android.service.wallpaper.WallpaperService"/></intent>
         <package android:name="com.openai.chatgpt"/>
         <intent><action android:name="android.speech.RecognitionService"/></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>
@@ -19,6 +20,13 @@
         </activity>
         <activity android:name=".HudSettingsActivity" android:exported="false"/>
         <activity android:name=".IconStudioActivity" android:exported="false"/>
+        <activity android:name=".WallpaperActivity" android:exported="false"/>
+        <activity android:name=".ReleaseActivity" android:exported="false"/>
+        <service android:name=".NeonLiveWallpaper" android:label="NEON Circuit Live"
+            android:exported="true" android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter><action android:name="android.service.wallpaper.WallpaperService"/></intent-filter>
+            <meta-data android:name="android.service.wallpaper" android:resource="@xml/neon_wallpaper"/>
+        </service>
         <activity android:name=".TerminalActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasEntryActivity" android:exported="true">
@@ -34,6 +42,10 @@
         <receiver android:name=".NeonWidget" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/neon_widget"/>
+        </receiver>
+        <receiver android:name=".TerminalWidget" android:label="NEON Terminal" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/terminal_widget"/>
         </receiver>
     </application>
 </manifest>
