@@ -4,6 +4,7 @@ import android.app.*
 import android.content.*
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.*
 import android.view.*
@@ -19,12 +20,34 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
     private fun find(view:View,predicate:(View)->Boolean):View? {if(predicate(view))return view;if(view is ViewGroup)for(i in 0 until view.childCount){val item=find(view.getChildAt(i),predicate);if(item!=null)return item};return null}
     private fun label(value:String)=find(activity.window.decorView){it is TextView&&it.text.toString()==value} as? TextView
     private fun part(value:String)=find(activity.window.decorView){it.tag=="theme:${Themes.current(context).id}:$value"}
-    private fun main(block:()->Unit)=test.runOnMainSync(block)
-    private fun foreground(){check(test.uiAutomation.rootInActiveWindow?.packageName?.toString()==context.packageName,"Foreign window obstructs feature verification")}
-    private fun tap(value:String) {
-        foreground();val xy=IntArray(2)
-        main{val v=label(value);check(v!=null,"Missing $value");v!!.getLocationOnScreen(xy);xy[0]+=v.width/2;xy[1]+=v.height/2;check(v.isShown,"Hidden control $value")}
-        val now=SystemClock.uptimeMillis();test.sendPointerSync(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,xy[0].toFloat(),xy[1].toFloat(),0));test.sendPointerSync(MotionEvent.obtain(now,now+25,MotionEvent.ACTION_UP,xy[0].toFloat(),xy[1].toFloat(),0));test.waitForIdleSync();Thread.sleep(250)
+    private fun main(block: () -> Unit) = test.onUi(block)
+    private fun foreground() {
+        val deadline = SystemClock.elapsedRealtime() + 10000
+        fun visible() = test.uiAutomation.rootInActiveWindow?.packageName?.toString() == context.packageName
+        while (!visible() && SystemClock.elapsedRealtime() < deadline) Thread.sleep(100)
+        check(visible(), "Foreign window obstructs feature verification")
+    }
+    private fun tap(value: String) {
+        foreground()
+        val bounds = Rect()
+        val deadline = SystemClock.elapsedRealtime() + 10000
+        var ready: Boolean
+        do {
+            ready = false
+            main {
+                val control = label(value)
+                ready = activity.hasWindowFocus() && control != null && control.isShown && control.getGlobalVisibleRect(bounds)
+            }
+            if (!ready) Thread.sleep(100)
+        } while (!ready && SystemClock.elapsedRealtime() < deadline)
+        check(ready, "Control ${value} not visible in focused NEON window")
+        val now = SystemClock.uptimeMillis()
+        val x = bounds.exactCenterX()
+        val y = bounds.exactCenterY()
+        test.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0))
+        test.sendPointerSync(MotionEvent.obtain(now, now+25, MotionEvent.ACTION_UP, x, y, 0))
+        test.waitForIdleSync()
+        Thread.sleep(250)
     }
     private fun screenshot(name:String){Thread.sleep(400);foreground();val b=test.uiAutomation.takeScreenshot();check(b!=null,"Screenshot unavailable");b!!.let{File(dir,name+".png").outputStream().use {s->it.compress(Bitmap.CompressFormat.PNG,100,s)};it.recycle()}}
     private fun startMain():MainActivity=(test.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity).also{test.waitForIdleSync();Thread.sleep(600)}

@@ -27,7 +27,7 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         assertions++
         if (!value) throw AssertionError(message)
     }
-    private fun main(block: () -> Unit) = test.runOnMainSync(block)
+    private fun main(block: () -> Unit) = test.onUi(block)
     private fun find(view: View, match: (View) -> Boolean): View? {
         if (match(view)) return view
         if (view is ViewGroup) for (index in 0 until view.childCount) find(view.getChildAt(index), match)?.let { return it }

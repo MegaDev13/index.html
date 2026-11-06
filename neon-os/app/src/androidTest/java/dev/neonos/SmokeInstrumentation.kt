@@ -8,6 +8,13 @@ import android.view.*
 import android.widget.*
 import java.io.File
 
+/** Propagate UI assertion failures to the instrumentation thread for the failure artifact. */
+internal fun Instrumentation.onUi(block: () -> Unit) {
+    var result: Result<Unit>? = null
+    runOnMainSync { result = runCatching(block) }
+    checkNotNull(result).getOrThrow()
+}
+
 /** Runs on an actual Android emulator through am instrument; no mock UI. */
 class SmokeInstrumentation: Instrumentation() {
     private var assertions=0
@@ -34,33 +41,33 @@ class SmokeInstrumentation: Instrumentation() {
                 unobstructed()
                 if(text in setOf("HOME","GRID","STATUS","CONFIG")) {
                     val pos=IntArray(2)
-                    runOnMainSync {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.getLocationOnScreen(pos);pos[0]+=view.width/2;pos[1]+=view.height/2}
+                    onUi {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.getLocationOnScreen(pos);pos[0]+=view.width/2;pos[1]+=view.height/2}
                     val now=SystemClock.uptimeMillis()
                     sendPointerSync(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,pos[0].toFloat(),pos[1].toFloat(),0))
                     sendPointerSync(MotionEvent.obtain(now,now+20,MotionEvent.ACTION_UP,pos[0].toFloat(),pos[1].toFloat(),0))
-                } else runOnMainSync {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.performClick()}
+                } else onUi {val view=find(window,text);check(view!=null,"Missing control: $text");view!!.performClick()}
                 waitForIdleSync()
             }
             fun screenshot(name:String) {Thread.sleep(350);unobstructed();uiAutomation.takeScreenshot()?.let {image->File(dir,"$name.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()}}
             Thread.sleep(1300);waitForIdleSync()
             check(targetContext.packageManager.getPackageInfo(targetContext.packageName,android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.toSet().orEmpty()==setOf("android.permission.SET_WALLPAPER","android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE","android.permission.RECORD_AUDIO","android.permission.ACCESS_COARSE_LOCATION","android.permission.BLUETOOTH_CONNECT"),"Unexpected permission")
-            runOnMainSync {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
+            onUi {check(find(window,"HOME")!=null,"Home missing");check(find(window,"QUICK ACCESS")!=null,"Favorites missing")}
             screenshot("01-home")
-            click("GRID");runOnMainSync {check(find(window,"Aplicativos")!=null,"Grid title missing")};screenshot("02-grid")
-            runOnMainSync {
+            click("GRID");onUi {check(find(window,"Aplicativos")!=null,"Grid title missing")};screenshot("02-grid")
+            onUi {
                 fun edit(view:View):EditText? {if(view is EditText)return view;if(view is ViewGroup)for(i in 0 until view.childCount){val v=edit(view.getChildAt(i));if(v!=null)return v};return null}
                 val search=edit(window);check(search!=null,"Search missing");search!!.setText("zzzz-no-result")
-            };waitForIdleSync();runOnMainSync {check(find(window,"Nenhum aplicativo encontrado.")!=null,"Search does not filter")}
+            };waitForIdleSync();onUi {check(find(window,"Nenhum aplicativo encontrado.")!=null,"Search does not filter")}
             click("STATUS");screenshot("03-status")
             click("CONFIG");screenshot("04-config")
-            runOnMainSync {
+            onUi {
                 check(find(window,"Modo instantâneo") is Switch,"Instant control missing")
                 val instant=find(window,"Modo instantâneo") as Switch;instant.isChecked=true
             };click("PRÉVIA DO EFEITO")
-            runOnMainSync {(find(window,"Modo instantâneo") as Switch).isChecked=false}
+            onUi {(find(window,"Modo instantâneo") as Switch).isChecked=false}
             val measurement=Diagnostics(activity)
             for(effect in 0..4) {
-                runOnMainSync {
+                onUi {
                     val view=AccessView(activity).apply {this.effect=effect}
                     val holder=window as ViewGroup;holder.addView(view,ViewGroup.LayoutParams(-1,-1));view.play(280)
                     Handler(Looper.getMainLooper()).postDelayed({holder.removeView(view)},320)
@@ -68,27 +75,27 @@ class SmokeInstrumentation: Instrumentation() {
                 uiAutomation.takeScreenshot()?.let {image->File(dir,"effect-${effect+1}.png").outputStream().use {image.compress(Bitmap.CompressFormat.PNG,100,it)};image.recycle()};Thread.sleep(250)
             }
             // Measure a separate pass with no screenshots, shell commands or sampling in the loop.
-            runOnMainSync {measurement.start()}
+            onUi {measurement.start()}
             for(effect in 0..4) {
-                runOnMainSync {
+                onUi {
                     val view=AccessView(activity).apply {this.effect=effect}
                     val holder=window as ViewGroup;holder.addView(view,ViewGroup.LayoutParams(-1,-1));view.play(280)
                     Handler(Looper.getMainLooper()).postDelayed({holder.removeView(view)},320)
                 };Thread.sleep(420)
             }
             unobstructed()
-            runOnMainSync {
+            onUi {
                 val json=measurement.report();check(json.getLong("pss_kib")>0,"Memory not measured");check(json.getInt("frames")>0,"No frames recorded");File(dir,"profiling-emulator.json").writeText(json.toString(2));measurement.stop()
             }
             click("HOME")
-            runOnMainSync {check(find(window,"QUICK ACCESS")!=null,"Return home failed")}
+            onUi {check(find(window,"QUICK ACCESS")!=null,"Return home failed")}
             val entries=AppRepository(targetContext).load();check(entries.isNotEmpty(),"No launchable apps discovered")
             val settings=entries.firstOrNull {it.component.packageName=="com.android.settings"}
             check(settings!=null,"Settings launcher entry missing")
-            runOnMainSync {AppRepository(targetContext).open(settings!!)};Thread.sleep(350)
+            onUi {AppRepository(targetContext).open(settings!!)};Thread.sleep(350)
             uiAutomation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")
             try {
-                runOnMainSync {
+                onUi {
                     val host=android.appwidget.AppWidgetHost(targetContext,9923)
                     val id=host.allocateAppWidgetId()
                     try {
