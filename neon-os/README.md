@@ -1,4 +1,4 @@
-# NEON OS 0.3.2
+# NEON OS 0.3.3
 
 Launcher Android nativo em Kotlin para o POCO X7 Pro. O código está na pasta `neon-os/` da branch `neon-os` de `MegaDev13/index.html`.
 
@@ -6,6 +6,8 @@ Launcher Android nativo em Kotlin para o POCO X7 Pro. O código está na pasta `
 - **Home e Grid** com gaveta que acompanha o dedo, páginas, pastas, arraste, pesquisa, categorias, ordenação, favoritos, atalhos e widgets Android.
 - **Icon Studio** com desenhos vetoriais, escolha individual, restauração, importação de imagens e prévia de ZIP. Exporta os ícones originais e identificadores dos apps escolhidos.
 - **Wallpaper** com imagem própria por tema, recorte, escurecimento, prévia e aplicação no Android. O papel de parede animado é opcional.
+- **Teclado NEON** com sugestões PT-BR por toque, acentos por deslize, Caps Lock, temas, foto, emojis, GIFs locais e ferramentas.
+- **Bridge no launcher** com diagnóstico MCP por USB e acesso ao shell do Termux.
 - **Terminal** com eventos reais observados pelo NEON, comandos locais e widget de resumo.
 - **ATLAS** com abertura do ChatGPT oficial como padrão e modo integrado opcional. Dark Terminal, Cyberpunk Neon e Corporate Dystopia continuam selecionáveis.
 
@@ -27,6 +29,7 @@ Workflow: `.github/workflows/neon-android.yml` na raiz do repositório. PR roda 
 - [Instalação e reversão](docs/INSTALACAO.md)
 - [Limitações e fontes](docs/COMPATIBILIDADE.md)
 - [Controles e evidências da 0.3.2](docs/DINAMICO-0.3.2.md)
+- [Teclado, navegação e Bridge da 0.3.3](docs/TECLADO-BRIDGE-0.3.3.md)
 - [NEON Bridge com Termux, SSH e MCP](bridge/README.md)
 - [Verificação do gesto da gaveta na 0.3.1](docs/GAVETA-0.3.1.md)
 - [Relatório de entrega da 0.3.0](docs/RELATORIO.md)

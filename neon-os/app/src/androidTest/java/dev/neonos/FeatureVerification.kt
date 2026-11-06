@@ -157,9 +157,10 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
             Thread.sleep(200)
             main {
                 val editor = find(atlas.window.decorView) { it is EditText } as EditText
-                check(editor.text.toString() == expected, message)
-                if (clear) editor.setText("")
+                check(editor.text.toString() == expected, "$message (length ${editor.length()}, expected ${expected.length})")
+                if (clear) editor.text.clear()
             }
+            if (clear) test.waitForIdleSync()
         }
         if (key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) != true) tapKeyboard(1/18f, 123f)
         Thread.sleep(150)
@@ -182,6 +183,14 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         screenshot("v033-keyboard-suggestions")
         tapKeyboard(.165f, 26f)
         checkEditor("você ", "Tap on suggestion did not replace the typed token", true)
+        tapKeyboard(.063f, 174f)
+        tapKeyboard(.063f, 174f)
+        tapKeyboard(1/18f, 123f)
+        tapKeyboard(.25f, 71f)
+        checkEditor("AE", "Double Shift did not keep Caps Lock active", true)
+        tapKeyboard(.063f, 174f)
+        tapKeyboard(.25f, 71f)
+        checkEditor("e", "Shift did not exit Caps Lock", true)
         tapKeyboard(.155f, 224f)
         screenshot("v033-keyboard-toolbar")
         tapKeyboard(.39f, 30f)
@@ -201,7 +210,7 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
             check(String(bytes.take(6).toByteArray(), Charsets.US_ASCII) == "GIF89a", "GIF is unreadable")
         }
         evidence.put("keyboard_accent_hold_slide", true).put("keyboard_suggestions_require_tap", true)
-            .put("keyboard_emoji_and_clipboard", true).put("keyboard_local_gif_content", true)
+            .put("keyboard_double_shift_caps_lock", true).put("keyboard_emoji_and_clipboard", true).put("keyboard_local_gif_content", true)
         main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}
         val hideDeadline=SystemClock.elapsedRealtime()+5000
         while(imeVisible()&&SystemClock.elapsedRealtime()<hideDeadline)Thread.sleep(100)

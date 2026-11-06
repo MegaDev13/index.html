@@ -422,6 +422,35 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         check(runCatching { java.net.Socket("127.0.0.1",38223).close() }.isFailure, "Bridge did not stop on exit")
         evidence.put("launcher_bridge_authenticated_and_stops", true)
 
+        val keyboardSettings = open(KeyboardConfigActivity::class.java)
+        main {
+            check(text(keyboardSettings, "NEON KEYBOARD") != null, "Keyboard settings missing")
+            check(text(keyboardSettings, "ESCOLHER FOTO DE FUNDO") != null, "Keyboard photo picker missing")
+            check(!keyboardSettings.window.isNavigationBarContrastEnforced, "Platform navigation scrim still enabled")
+            val vibration = text(keyboardSettings, "Vibração ao tocar") as android.widget.Switch
+            vibration.isChecked = true
+            keyboardSettings.finish()
+        }
+        val reopenedSettings = open(KeyboardConfigActivity::class.java)
+        main {
+            val vibration = text(reopenedSettings, "Vibração ao tocar") as android.widget.Switch
+            check(vibration.isChecked, "Keyboard preference lost on reopen")
+            vibration.isChecked = false
+        }
+        shot("v033-keyboard-settings")
+        main { reopenedSettings.finish() }
+        val translator = open(KeyboardTranslateActivity::class.java)
+        main {
+            (find(translator.window.decorView) { it is android.widget.EditText } as android.widget.EditText).setText("Boa noite")
+            text(translator, "TRADUZIR COM ATLAS")!!.performClick()
+            check(text(translator, "Configure o ATLAS integrado e faça login no backend HTTPS para traduzir.") != null,
+                "Translator did not explain missing backend")
+        }
+        shot("v033-translation-unconfigured")
+        main { translator.finish() }
+        evidence.put("keyboard_settings_persisted", true).put("neon_dark_navigation_appearance", true)
+            .put("translator_unconfigured_feedback", true)
+
         main { terminal.finish(); Themes.select(context, Themes.TERMINAL) }
         open(MainActivity::class.java, true)
         check(EventJournal.snapshot().any { it.kind == "THEME" && it.detail == Themes.TERMINAL }, "Theme event absent")

@@ -4,7 +4,7 @@
 
 Abra **Config → Configurar Teclado NEON** para ativar e escolher o teclado no Android. A engrenagem no teclado abre as ferramentas.
 
-- Pressione uma letra acentuável, arraste até o acento e solte. As sugestões em português brasileiro funcionam localmente e entram no texto quando tocadas.
+- Dê dois toques rápidos em ⇧ para manter as maiúsculas. Toque em ⇪ para sair do Caps Lock. Pressione uma letra acentuável, arraste até o acento e solte. As sugestões em português brasileiro funcionam localmente e entram no texto quando tocadas.
 - Ajuste fonte das teclas, altura, vibração, tempo para mostrar acentos, cores, efeito e intensidade. Escolha uma foto e ajuste sua visibilidade. A cópia redimensionada fica no armazenamento privado do app.
 - O estilo do texto digitado usa caracteres Unicode nas letras ASCII e nos números compatíveis. A fonte das teclas é um ajuste separado.
 - Toque em **☺** para emojis e carinhas de texto. Os três GIFs NEON funcionam em campos que anunciam suporte a GIF pela API de conteúdo do Android.
