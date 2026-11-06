@@ -98,7 +98,7 @@ class HudHomeView(
     private var ringMotion: ObjectAnimator? = null
     private val ring = object : View(context) {
         private val arcs = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = style.accent
+            color = this@HudHomeView.style.accent
             style = Paint.Style.STROKE
         }
         private val bounds = RectF()

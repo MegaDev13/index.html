@@ -34,7 +34,9 @@ class LockStudioActivity : NeonPanel() {
             worker.execute {
                 val result = runCatching {
                     val bitmap = NeonArt.wallpaper(1080, 2400, theme.accent, theme.id)
-                    try { WallpaperManager.getInstance(this).setBitmap(bitmap, null, false, WallpaperManager.FLAG_LOCK) }
+                    try {
+                        check(WallpaperManager.getInstance(this).setBitmap(bitmap, null, false, WallpaperManager.FLAG_LOCK) > 0)
+                    }
                     finally { bitmap.recycle() }
                 }
                 whenAlive {

@@ -362,15 +362,41 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         evidence.put("folders_horizontal_gesture_drag", true).put("drag_input", "MotionEvents dispatched to the attached Activity")
         prefs.edit().putBoolean("home_edit", false).putString("home_layout", savedLayout).commit()
 
+        val lock = open(LockStudioActivity::class.java) as LockStudioActivity
+        shot("v032-lock-studio")
+        val lockManager = WallpaperManager.getInstance(context)
+        val previousLock = lockManager.getWallpaperId(WallpaperManager.FLAG_LOCK)
+        main { check(text(lock, "APLICAR ARTE NO BLOQUEIO")!!.performClick(), "Lock wallpaper control missing") }
+        val lockDeadline = SystemClock.elapsedRealtime() + 8000
+        while (!prefs.getBoolean("lock_continuity", false) && SystemClock.elapsedRealtime() < lockDeadline) Thread.sleep(120)
+        check(prefs.getBoolean("lock_continuity", false) &&
+            lockManager.getWallpaperId(WallpaperManager.FLAG_LOCK) != previousLock, "Native lock wallpaper was not set")
+        main { lock.finish() }
+        evidence.put("native_lock_wallpaper_applied", true)
         val terminal = open(TerminalActivity::class.java) as TerminalActivity
         main {
             terminal.execute("battery")
             check(find(terminal.window.decorView) { it is TextView && it.text.toString().startsWith("Bateria: ") } != null, "Battery command failed")
             terminal.execute("rm -rf /")
             check(text(terminal, "Comando não permitido. Use help.") != null, "Terminal accepted system command")
+            terminal.execute("brilho 42")
+            check(kotlin.math.abs(terminal.window.attributes.screenBrightness - .42f) < .001f, "Terminal brightness did not apply")
+            terminal.execute("brilho auto")
+            check(terminal.window.attributes.screenBrightness == -1f, "System brightness was not restored")
+            terminal.execute("volume")
+            check(find(terminal.window.decorView) { it is TextView && (
+                it.text.toString().startsWith("Volume de mídia:") || it.text.toString() == "Mídia silenciada.") } != null,
+                "Terminal volume did not read media")
             terminal.execute("help")
         }
         shot("v2-terminal-console")
+        main { terminal.execute("open com.android.settings") }
+        val openDeadline = SystemClock.elapsedRealtime() + 6500
+        while (test.uiAutomation.rootInActiveWindow?.packageName?.toString() != "com.android.settings" &&
+            SystemClock.elapsedRealtime() < openDeadline) Thread.sleep(120)
+        check(test.uiAutomation.rootInActiveWindow?.packageName?.toString() == "com.android.settings", "Terminal open did not launch Settings")
+        test.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        evidence.put("terminal_opens_app", true).put("terminal_brightness_and_media_read", true)
         main { terminal.finish(); Themes.select(context, Themes.TERMINAL) }
         open(MainActivity::class.java, true)
         check(EventJournal.snapshot().any { it.kind == "THEME" && it.detail == Themes.TERMINAL }, "Theme event absent")

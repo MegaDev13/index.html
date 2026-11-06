@@ -23,6 +23,12 @@ class UpgradePolicyTest {
         }
         assertEquals(TerminalCommand.DARK, TerminalParser.parse("theme dark"))
         assertEquals(TerminalCommand.BATTERY, TerminalParser.parse("battery"))
+        assertEquals(TerminalCommand.OPEN, TerminalParser.parse("open WhatsApp"))
+        assertEquals("WhatsApp", TerminalParser.argument("open WhatsApp"))
+        assertEquals(TerminalCommand.MUTE, TerminalParser.parse("silenciar"))
+        assertEquals(TerminalCommand.UNMUTE, TerminalParser.parse("dessilenciar"))
+        assertEquals(TerminalCommand.VOLUME, TerminalParser.parse("volume 50"))
+        assertEquals(TerminalCommand.BRIGHTNESS, TerminalParser.parse("brilho auto"))
     }
     @Test fun mapProjectionPlacesBahiaSouthAndWestOfOrigin() {
         assertEquals(.5f, MapProjection.x(0.0), .00001f)
