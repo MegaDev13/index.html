@@ -39,3 +39,5 @@ Na raiz do ZIP, inclua `NEON_ICON_PACK/manifest.json` em UTF-8 e as imagens indi
 - Use PNG, JPEG ou WebP, dimensões de 16 a 2048 px e até 2 MiB por imagem. Prefira 256 × 256 com transparência para manter a proporção na normalização.
 - Limites de 750 desenhos, 1000 entradas no ZIP, manifesto de 256 KiB e 64 MiB descompactados. Duplicatas e caminhos fora da estrutura são rejeitados.
 - Mapas por pacote/componente ficam disponíveis para apps instalados depois. As escolhas individuais feitas no Studio têm precedência sobre o desenho padrão.
+
+Na 0.3.2, o Studio prepara o inventário completo antes de abrir o seletor. O campo `icon_source` diferencia ícones originais e o ícone padrão do Android, usado quando o original está indisponível.

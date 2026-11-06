@@ -1,4 +1,4 @@
-# NEON OS 0.3.1
+# NEON OS 0.3.2
 
 Launcher Android nativo em Kotlin para o POCO X7 Pro. O código está na pasta `neon-os/` da branch `neon-os` de `MegaDev13/index.html`.
 
@@ -26,6 +26,8 @@ Workflow: `.github/workflows/neon-android.yml` na raiz do repositório. PR roda 
 - [Formato de importação e exportação de ícones](docs/ICON-PACK-FORMAT.md)
 - [Instalação e reversão](docs/INSTALACAO.md)
 - [Limitações e fontes](docs/COMPATIBILIDADE.md)
+- [Controles e evidências da 0.3.2](docs/DINAMICO-0.3.2.md)
+- [NEON Bridge com Termux, SSH e MCP](bridge/README.md)
 - [Verificação do gesto da gaveta na 0.3.1](docs/GAVETA-0.3.1.md)
 - [Relatório de entrega da 0.3.0](docs/RELATORIO.md)
 - [Instalação do ChatGPT e backend opcional](docs/ATLAS-CONFIGURACAO.md)
