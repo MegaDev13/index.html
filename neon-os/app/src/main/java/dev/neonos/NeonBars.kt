@@ -7,8 +7,9 @@ import android.view.WindowInsetsController
 
 @Suppress("DEPRECATION")
 internal fun darkNavigation(window: Window) {
+    val decor = window.decorView
     window.isNavigationBarContrastEnforced = false
     window.navigationBarColor = if (Build.VERSION.SDK_INT >= 35) Color.TRANSPARENT else Color.BLACK
     window.navigationBarDividerColor = Color.TRANSPARENT
-    window.decorView.windowInsetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+    decor.windowInsetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
 }
