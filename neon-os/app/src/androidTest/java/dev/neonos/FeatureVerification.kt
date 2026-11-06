@@ -182,7 +182,26 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         screenshot("v033-keyboard-suggestions")
         tapKeyboard(.165f, 26f)
         checkEditor("você ", "Tap on suggestion did not replace the typed token", true)
+        tapKeyboard(.155f, 224f)
+        screenshot("v033-keyboard-toolbar")
+        tapKeyboard(.39f, 30f)
+        screenshot("v033-keyboard-emoji")
+        tapKeyboard(.065f, 83f)
+        checkEditor("😀", "Emoji palette did not deliver character", true)
+        main { atlas.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("TEST", "NEON clipboard")) }
+        tapKeyboard(.85f, 30f)
+        screenshot("v033-keyboard-clipboard")
+        tapKeyboard(.5f, 90f)
+        checkEditor("NEON clipboard", "Clipboard panel did not paste explicitly selected text", true)
+        main { atlas.getSystemService(ClipboardManager::class.java).clearPrimaryClip() }
+        for ((id, _) in KeyboardGifProvider.items) {
+            val uri = KeyboardGifProvider.uri(context, id)
+            check(context.contentResolver.getType(uri) == "image/gif", "Incorrect GIF MIME type")
+            val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+            check(String(bytes.take(6).toByteArray(), Charsets.US_ASCII) == "GIF89a", "GIF is unreadable")
+        }
         evidence.put("keyboard_accent_hold_slide", true).put("keyboard_suggestions_require_tap", true)
+            .put("keyboard_emoji_and_clipboard", true).put("keyboard_local_gif_content", true)
         main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}
         val hideDeadline=SystemClock.elapsedRealtime()+5000
         while(imeVisible()&&SystemClock.elapsedRealtime()<hideDeadline)Thread.sleep(100)

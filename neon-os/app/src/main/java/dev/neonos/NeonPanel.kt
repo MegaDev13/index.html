@@ -43,6 +43,7 @@ open class NeonPanel : Activity() {
 
     protected fun screen(title: String) {
         window.setDecorFitsSystemWindows(false)
+        darkNavigation(window)
         body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(12), dp(18), dp(12))
@@ -50,6 +51,7 @@ open class NeonPanel : Activity() {
         }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
+            setBackgroundColor(Color.BLACK)
             addView(body)
             setOnApplyWindowInsetsListener { _, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())

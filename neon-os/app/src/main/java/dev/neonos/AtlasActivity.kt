@@ -65,7 +65,7 @@ class AtlasActivity:Activity() {
     private var ttsReady=false
     private val stopMic=Runnable{recognizer?.cancel();orb.status("PRONTO");status.text="Microfone encerrado por limite de tempo."}
     override fun onCreate(state:Bundle?) {
-        super.onCreate(state);window.setDecorFitsSystemWindows(false);compact=intent.getBooleanExtra("compact",false)
+        super.onCreate(state);window.setDecorFitsSystemWindows(false);darkNavigation(window);compact=intent.getBooleanExtra("compact",false)
         EventJournal.record("ATLAS","Painel inicializado");messages=secure.history();render()
 
     }

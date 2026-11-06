@@ -35,6 +35,10 @@
             <intent-filter><action android:name="android.view.InputMethod"/></intent-filter>
             <meta-data android:name="android.view.im" android:resource="@xml/neon_keyboard"/>
         </service>
+        <activity android:name=".KeyboardConfigActivity" android:exported="true"/>
+        <activity android:name=".KeyboardTranslateActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
+        <provider android:name=".KeyboardGifProvider" android:authorities="${applicationId}.keyboard-gif"
+            android:exported="false" android:grantUriPermissions="true"/>
         <activity android:name=".BridgeActivity" android:exported="false"/>
         <activity android:name=".TerminalActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>
         <activity android:name=".AtlasActivity" android:exported="false" android:windowSoftInputMode="stateHidden|adjustResize"/>

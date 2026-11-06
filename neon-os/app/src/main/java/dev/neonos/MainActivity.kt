@@ -167,18 +167,28 @@ class MainActivity: Activity() {
         widgetConfiguring=state?.getBoolean("widgetConfiguring",false)?:false
         diagnostics=Diagnostics(this)
         EventJournal.record("NEON_OS","Inicializado / ${BuildConfig.VERSION_NAME}")
-        window.decorView.systemUiVisibility=0
+        darkNavigation(window)
         window.setDecorFitsSystemWindows(false)
         root=FrameLayout(this)
         art=ArtView(this,accent);root.addView(art,FrameLayout.LayoutParams(-1,-1))
         column=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(10),dp(20),0)}
         root.addView(column,FrameLayout.LayoutParams(-1,-1))
+        val navShade = View(this).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Color.TRANSPARENT, 0xB0000000.toInt()))
+        }
         root.setOnApplyWindowInsetsListener { _,insets ->
+            val nav = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            if (navShade.layoutParams.height != nav) {
+                navShade.layoutParams = (navShade.layoutParams as FrameLayout.LayoutParams).apply { height = nav }
+            }
             val bar=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             column.setPadding(dp(20)+bar.left,dp(10)+bar.top,dp(20)+bar.right,maxOf(bar.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom))
             insets
         }
         access=AccessView(this);root.addView(access,FrameLayout.LayoutParams(-1,-1))
+        root.addView(navShade, FrameLayout.LayoutParams(-1, 0, Gravity.BOTTOM))
         setContentView(root)
         for(id in widgetHost.appWidgetIds)if(id!=pendingWidget && id.toString() !in savedWidgets())widgetHost.deleteAppWidgetId(id)
         if(intent.getStringExtra("neon.page")=="GRID"){query=intent.getStringExtra("neon.query")?.take(120)?:"";show("GRID")}else show("HOME");loadApps()
@@ -1044,6 +1054,7 @@ class MainActivity: Activity() {
         add(button("HUD / CLIMA"){hudRoute("weather")})
         add(button("TERMINAL / EVENTOS REAIS"){hudRoute("terminal")})
         add(button("NEON BRIDGE / MCP E SHELL") { safeStart(Intent(this, BridgeActivity::class.java)) })
+        add(button("CONFIGURAR TECLADO NEON") { safeStart(Intent(this, KeyboardConfigActivity::class.java)) })
         add(button("ATIVAR TECLADO NEON") { safeStart(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) })
         add(button("ESCOLHER TECLADO") { getSystemService(android.view.inputmethod.InputMethodManager::class.java).showInputMethodPicker() })
         add(button("CONFIGURAR ATLAS") {openAtlas()})

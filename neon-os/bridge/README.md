@@ -1,6 +1,18 @@
 # NEON Bridge
 
-O servidor é o OpenSSH executado no Termux. O APK do launcher mantém seu próprio terminal de comandos locais. Use o bridge quando quiser uma sessão de shell real no ambiente privado do Termux ou diagnósticos por MCP.
+Abra **CONFIG → NEON BRIDGE / MCP E SHELL**, ou digite `bridge` no terminal do launcher.
+
+## Diagnóstico MCP pelo launcher
+
+1. Toque em **INICIAR SESSÃO LOCAL** e mantenha o painel aberto. A chave temporária autoriza as leituras `android`, `kernel`, `uptime` e `storage`. A sessão encerra ao sair do painel ou depois de dez minutos.
+2. Conecte o aparelho por USB a um computador autorizado para depuração Android. Rode `adb devices` e `adb -s SERIAL forward tcp:38223 tcp:38223`, com o serial listado.
+3. No computador, forneça a chave ao processo que inicia o cliente MCP pela variável de ambiente `NEON_BRIDGE_TOKEN`. Em Bash, use `read -rsp 'Chave do NEON Bridge: ' NEON_BRIDGE_TOKEN; export NEON_BRIDGE_TOKEN; echo` e inicie o cliente a partir desse terminal. Evite salvar a chave em configurações compartilhadas.
+4. Configure o servidor stdio com o comando `python3` e argumentos `["/caminho/neon_mcp.py", "--launcher"]`. Teste `neon_diagnostic` com `android`.
+5. Ao encerrar, pare a sessão no painel e rode `adb -s SERIAL forward --remove tcp:38223` no computador.
+
+## Shell no Termux
+
+Use **ABRIR TERMUX PARA SHELL** no launcher. O servidor de shell é o OpenSSH executado no ambiente privado do Termux.
 
 ## Parear com um computador
 
@@ -22,7 +34,7 @@ Host neon-bridge
 
 Use `ssh neon-bridge` para o shell interativo. A sessão usa a conta do Termux e as permissões que ela recebeu no Android.
 
-## Cliente MCP
+## Cliente MCP com transporte SSH do Termux
 
 Em um cliente compatível com servidores locais stdio, no computador que executa o encaminhamento ADB e tem o SSH configurado, registre:
 
