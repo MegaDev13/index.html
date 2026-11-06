@@ -2,9 +2,9 @@
 
 ## Disponibilidade da 0.3.0
 
-O GitHub Actions compilou a 0.3.0 e publicou as evidências. O APK da rodada está sem assinatura. A instalação da 0.3.0 aguarda a assinatura com a chave permanente. Veja [o relatório](RELATORIO.md) e o [resultado do Actions](https://github.com/MegaDev13/index.html/actions/runs/42140986740).
+O GitHub Actions compilou a 0.3.0 e publicou as evidências. O arquivo `NEON-OS-0.3.0.apk` da entrega foi assinado com a chave permanente e verificado com apksigner. Veja [o relatório](RELATORIO.md) e o [resultado do Actions](https://github.com/MegaDev13/index.html/actions/runs/42140986740).
 
-## Atualizar após a disponibilização do APK assinado
+## Atualizar a instalação
 
 1. Baixe **NEON-OS-0.3.0.apk**, o release assinado da entrega. Os APKs unsigned/debug do Actions são artefatos de desenvolvimento.
 2. Instale por cima do NEON OS 0.2.0. O applicationId continua `dev.neonos.poco`, o versionCode sobe de 10200 para 10300 e o certificado é o mesmo. Não desinstale para atualizar: isso apagaria as preferências e o histórico local do NEON.
@@ -61,4 +61,4 @@ Certificado SHA-256 esperado:
 
 `973185c207025f9b01339ce1130c85bd1fa6a22d7f652c786ae84d690874774b`
 
-A chave privada permanente permanece no backup privado já entregue; não está no repositório nem neste pacote. O APK 0.2.0 publicado foi verificado com apksigner. O release 0.3.0 foi compilado no GitHub Actions e aguarda assinatura com a chave preservada. A assinatura automática do workflow exige os secrets `NEON_KEYSTORE_B64` e `NEON_STORE_PASSWORD`, ainda não configurados pelo proprietário. Ela falha se os secrets estiverem ausentes ou o certificado for diferente, evitando uma nova identidade incompatível.
+A chave privada permanente permanece no backup privado já entregue; não está no repositório nem neste pacote. Os APKs 0.2.0 e 0.3.0 foram verificados com apksigner. O release 0.3.0 foi compilado no GitHub Actions e assinado localmente com a chave preservada. A verificação confirmou o pacote `dev.neonos.poco` e o aumento do versionCode de 10200 para 10300. A assinatura automática do workflow exige os secrets `NEON_KEYSTORE_B64` e `NEON_STORE_PASSWORD`, ainda não configurados pelo proprietário. Ela falha se os secrets estiverem ausentes ou o certificado for diferente, evitando uma nova identidade incompatível.
