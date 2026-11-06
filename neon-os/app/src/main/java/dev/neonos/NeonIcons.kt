@@ -11,7 +11,7 @@ object NeonIcons {
         "whatsapp" to listOf("com.whatsapp", "com.whatsapp.w4b"),
         "plane" to listOf("org.telegram.messenger"),
         "social" to listOf("com.facebook.katana", "com.facebook.lite", "com.twitter.android", "com.reddit.frontpage"),
-        "camera" to listOf("com.android.camera", "com.google.android.GoogleCamera", "com.instagram.android"),
+        "camera" to listOf("com.android.camera", "com.android.camera2", "com.google.android.GoogleCamera", "com.instagram.android"),
         "phone" to listOf("com.android.dialer", "com.google.android.dialer", "com.android.phone"),
         "chat" to listOf("com.android.messaging", "com.google.android.apps.messaging", "com.discord", "org.thoughtcrime.securesms"),
         "browser" to listOf("com.android.chrome", "org.mozilla.firefox", "com.mi.globalbrowser", "com.microsoft.emmx", "com.brave.browser", "com.opera.browser"),

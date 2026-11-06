@@ -78,6 +78,8 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         evidence.put("live_weather_android", reading != null)
         if (reading != null) File(directory, "weather-live.json").writeText(reading.json().toString(2))
         else File(directory, "weather-live-error.txt").writeText(live.exceptionOrNull().toString())
+        val savedFavorites = prefs.getStringSet("favorites", emptySet()).orEmpty().toSet()
+        prefs.edit().remove("favorites").commit()
         var home = open(MainActivity::class.java, true)
         main {
             val hud = find(home.window.decorView) { it is HudHomeView } as? HudHomeView
@@ -99,6 +101,7 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         main { check(text(home, "Aplicativos") != null, "Swipe up did not open drawer") }
         shot("v2-gesture-drawer")
         evidence.put("swipe_up", true)
+        prefs.edit().putStringSet("favorites", savedFavorites).commit()
 
         val store = IconStore(context)
         val inventory = File(directory, "NEON_ICON_EXPORT-emulator.zip")
@@ -228,8 +231,10 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
             check(first.getGlobalVisibleRect(source) && last.getGlobalVisibleRect(target), "Drag targets invisible")
         }
         swipe(source.centerX().toFloat(), source.centerY().toFloat(),
-            (target.centerX()-source.centerX()).toFloat(), (target.centerY()-source.centerY()).toFloat(), 750)
-        check(layout.page(1).indexOf(selected[0].key) == 1, "Native drag did not persist item order")
+            (target.centerX()-source.centerX()).toFloat(), (target.centerY()-source.centerY()).toFloat(),
+            ViewConfiguration.getLongPressTimeout().toLong() + 400)
+        check(HomeLayout(context).page(1) == listOf(selected[1].key, selected[0].key, selected[2].key),
+            "Drag did not persist item order: ${layout.page(1)}")
         shot("v2-drag-page")
         evidence.put("folders_horizontal_gesture_drag", true)
         prefs.edit().putBoolean("home_edit", false).putString("home_layout", savedLayout).commit()

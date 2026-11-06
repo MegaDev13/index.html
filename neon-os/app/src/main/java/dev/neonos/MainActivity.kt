@@ -40,6 +40,10 @@ class MainActivity: Activity() {
     private var homePage=0
     private var lastHomePage=0
     private var wallpaperKey=""
+    private data class AppDrag(val key: String, val tile: View)
+    private var appDrag: AppDrag? = null
+    private var pointerDown = false
+    private val dropTargets = linkedMapOf<View, (String) -> Unit>()
     private var touchX=0f
     private var touchY=0f
     private var touchInHud=false
@@ -150,7 +154,7 @@ class MainActivity: Activity() {
         try {widgetHost.startListening()} catch(_: Exception) {}
     }
     override fun onResume() {super.onResume();if(drawnTheme!=theme.id||uiSettingsHash!=prefs.all.hashCode())show(page);updateRefresh();resumed=true;EventJournal.record("LAUNCHER","Ativo");networkChanged();updateClock();hud?.updateBattery(batteryLevel,plugged);handler.removeCallbacks(tick);handler.post(tick);maybeAccess();loadApps()}
-    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
+    override fun onPause() {if(getSystemService(KeyguardManager::class.java).isKeyguardLocked || !getSystemService(PowerManager::class.java).isInteractive)gate.observeLocked();resumed=false;pointerDown=false;clearAppDrag();handler.removeCallbacks(tick);weatherGeneration++;weatherBusy=false;weather.cancel();hud?.stopMotion();access.stop();super.onPause()}
     override fun onStop() {TerminalWidget.refresh(this);getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback);diagnostics.stop();try {unregisterReceiver(broadcast)}catch(_:Exception){};getSystemService(LauncherApps::class.java).unregisterCallback(packageCallback);widgetHost.stopListening();super.onStop()}
     override fun onDestroy() {sessionGeneration++;weatherWorker.shutdownNow();io.shutdownNow();super.onDestroy()}
     override fun onWindowFocusChanged(hasFocus: Boolean) {super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeAccess()}
@@ -165,6 +169,8 @@ class MainActivity: Activity() {
     private fun add(view: View,parent: LinearLayout=body,weight: Float=0f) {parent.addView(view,LinearLayout.LayoutParams(if(weight>0)0 else -1,if(weight>0)-1 else -2,weight).apply {bottomMargin=dp(10)})}
     private fun button(text: String, action: ()->Unit): TextView = label(text,13f,accent).apply {gravity=Gravity.CENTER;setPadding(dp(12),dp(13),dp(12),dp(13));background=theme.background(this@MainActivity,true);Themes.tag(this,"button",theme);isClickable=true;isFocusable=true;setOnClickListener {action()}}
     private fun show(target: String) {
+        clearAppDrag()
+        dropTargets.clear()
         val animate=page!=target||lastHomePage!=homePage
         lastHomePage=homePage;gridSearch=null;uiSettingsHash=prefs.all.hashCode();hud?.stopMotion();hud=null;page=target;art.hudMode=target=="HOME";drawnTheme=theme.id;art.themeId=theme.id;art.accent=accent;art.invalidate();Themes.tag(root,"root",theme);atlasHomeButton=null;column.removeAllViews();clock=null;date=null;battery=null;gridBody=null
         val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
@@ -221,12 +227,10 @@ class MainActivity: Activity() {
         for(index in 0..5) {
             val tab=button(if(index==homePage)"●"else(index+1).toString()){homePage=index;show("HOME")}
             tab.contentDescription="Página ${index+1}"
-            tab.setOnDragListener{_,event->
-                if(event.action==DragEvent.ACTION_DROP){
-                    val key=event.localState as? String
-                    if(key!=null){homeLayout.move(key,index);homePage=index;show("HOME")}
-                }
-                event.localState is String
+            if (prefs.getBoolean("home_edit", false)) dropTargets[tab] = { key ->
+                homeLayout.move(key, index)
+                homePage = index
+                show("HOME")
             }
             pages.addView(tab,LinearLayout.LayoutParams(0,dp(48),1f))
         }
@@ -309,11 +313,49 @@ class MainActivity: Activity() {
         if(view is ViewGroup)for(index in 0 until view.childCount)if(touchesWidget(view.getChildAt(index),x,y))return true
         return false
     }
+    private fun clearAppDrag() {
+        appDrag?.tile?.apply {
+            alpha = 1f
+            translationX = 0f
+            translationY = 0f
+            translationZ = 0f
+            isPressed = false
+        }
+        appDrag = null
+    }
+
+    private fun handleAppDrag(event: MotionEvent, drag: AppDrag): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                drag.tile.translationX = event.x - touchX
+                drag.tile.translationY = event.y - touchY
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                val target = if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    dropTargets.entries.firstOrNull { (view, _) -> view !== drag.tile && inside(view, event.x, event.y) }
+                } else null
+                clearAppDrag()
+                pointerDown = false
+                val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                try { super.dispatchTouchEvent(cancel) } finally { cancel.recycle() }
+                target?.value?.invoke(drag.key)
+            }
+        }
+        return true
+    }
+
     override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+        appDrag?.let { return handleAppDrag(event, it) }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pointerDown = true
+                touchX = event.x
+                touchY = event.y
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> pointerDown = false
+        }
         if(page!="HOME"||prefs.getBoolean("home_edit",false))return super.dispatchTouchEvent(event)
         if(event.actionMasked==MotionEvent.ACTION_DOWN){
-            touchX=event.x
-            touchY=event.y
             touchInHud=hud?.let{inside(it,touchX,touchY)}==true
             touchInBody=inside(body,touchX,touchY)&&!touchesWidget(body,touchX,touchY)
             pinchHandled=false
@@ -486,7 +528,10 @@ class MainActivity: Activity() {
         renderGrid()
     }
     private fun renderGrid() {
-        val container=gridBody?:return;container.removeAllViews()
+        val container=gridBody?:return
+        clearAppDrag()
+        dropTargets.clear()
+        container.removeAllViews()
         val hidden=prefs.getStringSet("hidden_apps",emptySet()).orEmpty()
         val favorites=prefs.getStringSet("favorites",emptySet()).orEmpty()
         val order=gridOrder().withIndex().associate { it.value to it.index }
@@ -502,8 +547,9 @@ class MainActivity: Activity() {
         val columns=prefs.getInt("grid_columns",if(resources.configuration.screenWidthDp>=600)6 else 4).coerceIn(3,6)
         val size=prefs.getInt("icon_size",58).coerceAtMost((resources.configuration.screenWidthDp-48)/columns-6).coerceAtLeast(30)
         val draggable=allowDrag&&if(page=="HOME")prefs.getBoolean("home_edit",false)else prefs.getString("grid_sort","alpha")=="manual"
+        if (draggable) parent.clipChildren = false
         entries.chunked(columns).forEach { rowEntries ->
-            val row=LinearLayout(this)
+            val row=LinearLayout(this).apply { clipChildren = !draggable }
             for(app in rowEntries) {
                 val tile=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(3),dp(8),dp(3),dp(8));isFocusable=true;contentDescription="Abrir ${app.label}"}
                 val frame=FrameLayout(this).apply {background=theme.background(this@MainActivity,true);Themes.tag(this,"icon-frame",theme)}
@@ -512,23 +558,24 @@ class MainActivity: Activity() {
                 val title=label(app.label,12f).apply {gravity=Gravity.CENTER;maxLines=2;ellipsize=TextUtils.TruncateAt.END;minHeight=dp(35)};tile.addView(title)
                 tile.setOnClickListener {launchApp(app)}
                 tile.setOnLongClickListener {
-                    if(draggable)tile.startDragAndDrop(ClipData.newPlainText("neon.app",app.key),View.DragShadowBuilder(tile),app.key,0)
-                    else appMenu(app)
+                    if (draggable && pointerDown) {
+                        appDrag = AppDrag(app.key, tile)
+                        tile.alpha = .65f
+                        tile.translationZ = dp(8).toFloat()
+                    } else appMenu(app)
                     true
                 }
-                if(draggable)tile.setOnDragListener{_,event->
-                    val key=event.localState as? String
-                    if(key!=null&&key!=app.key&&event.action==DragEvent.ACTION_DROP){
-                        if(page=="HOME"){homeLayout.move(key,homePage,app.key);show("HOME")}
-                        else {
-                            val keys=(gridOrder()+apps.map{it.key}).distinct().toMutableList()
-                            keys.remove(key)
-                            keys.add(keys.indexOf(app.key).coerceAtLeast(0),key)
-                            prefs.edit().putString("grid_order",JSONArray(keys).toString()).apply()
-                            renderGrid()
-                        }
+                if (draggable) dropTargets[tile] = { key ->
+                    if (page == "HOME") {
+                        homeLayout.move(key, homePage, app.key)
+                        show("HOME")
+                    } else {
+                        val keys = (gridOrder() + apps.map { it.key }).distinct().toMutableList()
+                        keys.remove(key)
+                        keys.add(keys.indexOf(app.key).coerceAtLeast(0), key)
+                        prefs.edit().putString("grid_order", JSONArray(keys).toString()).apply()
+                        renderGrid()
                     }
-                    key!=null
                 }
                 loadHudIcon(app,icon)
                 row.addView(tile,LinearLayout.LayoutParams(0,-2,1f))
