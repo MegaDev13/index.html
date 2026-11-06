@@ -113,16 +113,46 @@ class FeatureVerification(private val test:Instrumentation,private val dir:File)
         val info = automation.serviceInfo
         info.flags = info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         automation.serviceInfo = info
-        val ime = automation.windows.firstOrNull { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
-        val key = ime?.root?.findAccessibilityNodeInfosByText("a")?.firstOrNull { it.text?.toString() == "a" && it.isClickable }
-        check(key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true, "NEON IME key missing")
+        fun letterA(): android.view.accessibility.AccessibilityNodeInfo? =
+            automation.windows.asSequence()
+                .filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+                .mapNotNull { window ->
+                    window.root?.findAccessibilityNodeInfosByText("a")?.firstOrNull {
+                        it.text?.toString() == "a" && it.isClickable && it.isVisibleToUser
+                    }
+                }.firstOrNull()
+        val drawnDeadline = SystemClock.elapsedRealtime() + 6500
+        var key = letterA()
+        while (key == null && SystemClock.elapsedRealtime() < drawnDeadline) {
+            Thread.sleep(140)
+            key = letterA()
+        }
+        screenshot("atlas-keyboard")
+        val tapped = key?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true
+        if (!tapped) {
+            // Some emulator images withhold the IME accessibility tree during input.
+            val coords = FloatArray(2)
+            main {
+                val decor = atlas.window.decorView
+                val density = atlas.resources.displayMetrics.density
+                coords[0] = decor.width / 18f
+                coords[1] = decor.height - decor.rootWindowInsets.getInsets(WindowInsets.Type.ime()).bottom + 83f * density
+            }
+            val whenDown = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(whenDown, SystemClock.uptimeMillis(), action, coords[0], coords[1], 0)
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                try { check(automation.injectInputEvent(event, true), "NEON IME touch injection failed") }
+                finally { event.recycle() }
+            }
+        }
+        Thread.sleep(250)
         test.waitForIdleSync()
         main {
             val editor = find(atlas.window.decorView) { it is EditText } as EditText
             check(editor.text.toString() == "a", "NEON IME did not deliver text to editor")
             editor.setText("")
         }
-        screenshot("atlas-keyboard")
         main{val input=find(atlas.window.decorView){it is EditText}!!;atlas.getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(input.windowToken,0);input.clearFocus()}
         val hideDeadline=SystemClock.elapsedRealtime()+5000
         while(imeVisible()&&SystemClock.elapsedRealtime()<hideDeadline)Thread.sleep(100)
