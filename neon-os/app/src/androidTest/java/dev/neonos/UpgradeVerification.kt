@@ -128,6 +128,12 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
         main {
             check(kotlin.math.abs(drawer.translationY - (drawer.height - distance)) < 1f, "Drawer did not follow continued drag")
         }
+        main {
+            val tile = find(drawer) { it.contentDescription?.startsWith("Abrir ") == true }
+            val visible = Rect()
+            check(tile != null && tile.getGlobalVisibleRect(visible) && visible.height() >= tile.height / 3,
+                "No app tiles appeared before release")
+        }
         shot("v031-drawer-drag")
         send(MotionEvent.ACTION_MOVE, gestureY - distance / 4, 500)
         main {
@@ -143,7 +149,7 @@ class UpgradeVerification(private val test: Instrumentation, private val directo
             check(text(home, "Aplicativos") != null, "Drawer title missing")
         }
         shot("v2-gesture-drawer")
-        evidence.put("swipe_up", true).put("drawer_follows_finger_before_release", true).put("short_drawer_swipe_returns_home", true)
+        evidence.put("swipe_up", true).put("drawer_follows_finger_before_release", true).put("short_drawer_swipe_returns_home", true).put("drawer_icons_visible_before_release", true)
         prefs.edit().putStringSet("favorites", savedFavorites).commit()
 
         val store = IconStore(context)

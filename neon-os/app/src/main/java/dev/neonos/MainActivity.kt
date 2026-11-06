@@ -695,9 +695,8 @@ class MainActivity: Activity() {
         }
     }
     private fun grid(parent: LinearLayout, initialQuery: String) {
-        add(mono("NEON GRID"), parent)
-        add(label("Aplicativos",32f), parent)
-        val search=EditText(this).apply {hint=if(theme.mono)"grep aplicativos..." else "Pesquisar aplicativos";background=theme.background(this@MainActivity,true);Themes.tag(this,"search",theme);setText(initialQuery);setTextColor(textColor);setHintTextColor(muted);textSize=16f;setSingleLine(true);inputType=android.text.InputType.TYPE_CLASS_TEXT;contentDescription="Pesquisar aplicativos";setPadding(dp(12),dp(12),dp(12),dp(12))}
+        add(label("Aplicativos",24f), parent)
+        val search=EditText(this).apply {hint=if(theme.mono)"grep aplicativos..." else "Pesquisar aplicativos";background=theme.background(this@MainActivity,true);Themes.tag(this,"search",theme);setText(initialQuery);setTextColor(textColor);setHintTextColor(muted);textSize=16f;setSingleLine(true);inputType=android.text.InputType.TYPE_CLASS_TEXT;contentDescription="Pesquisar aplicativos";setPadding(dp(12),dp(8),dp(12),dp(8))}
         gridSearch=search
         add(search, parent)
         val cats=Spinner(this);val names=arrayOf("Todos","Jogos","Produtividade","Social","Mídia","Outros")
@@ -713,8 +712,14 @@ class MainActivity: Activity() {
                 }
             }
         }
-        add(cats, parent)
-        add(button("ORDENAR / GRADE / OCULTOS"){gridOptions()}, parent)
+        val controls = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        controls.addView(cats, LinearLayout.LayoutParams(0, dp(48), 1f))
+        val options = button("ORDENAR / GRADE / OCULTOS") { gridOptions() }.apply {
+            textSize = 11f
+            setPadding(dp(6), 0, dp(6), 0)
+        }
+        controls.addView(options, LinearLayout.LayoutParams(0, dp(48), 1.3f))
+        add(controls, parent)
         gridBody=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL}
         add(gridBody!!, parent)
         search.addTextChangedListener(object: TextWatcher {override fun beforeTextChanged(s: CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s: CharSequence?,start:Int,before:Int,count:Int){query=s.toString();renderGrid()};override fun afterTextChanged(s:Editable?) {}})
